@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 2%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 189 100% 50%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 189 100% 50%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
+    --ring: 189 100% 50%;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+}
+
+/* Custom utility classes */
+.nav-pill {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.video-overlay {
+  background: linear-gradient(
+    to bottom,
+    rgba(5, 5, 8, 0.3) 0%,
+    rgba(5, 5, 8, 0.5) 50%,
+    rgba(5, 5, 8, 0.8) 100%
+  );
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+}
+
+.decode-text {
+  font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+}
+
+.font-mono-custom {
+  font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace;
+}
+
+.image-hover-scale {
+  transition: transform 0.4s ease;
+}
+.image-hover-scale:hover {
+  transform: scale(1.03);
+}

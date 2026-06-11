@@ -13,7 +13,8 @@
     "start": "NODE_ENV=production node backend/src/server.js",
     "dev:backend": "cd backend && npm run dev",
     "deploy": "bash deploy.sh",
-    "deploy:railway": "bash deploy.sh --railway"
+    "deploy:railway": "bash deploy.sh --railway",
+    "seed": "node backend/src/scripts/seed.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

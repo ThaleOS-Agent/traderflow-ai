@@ -3,9 +3,12 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
+  Crown, Star, CreditCard,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
+import { WalletConnect } from './WalletConnect';
+import { SubscriptionPage } from './SubscriptionPage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -91,6 +94,16 @@ function StatCard({
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────
 
+const TIER_COLORS: Record<string, string> = {
+  free:     'text-gray-400',
+  bronze:   'text-orange-400',
+  silver:   'text-slate-300',
+  gold:     'text-yellow-400',
+  platinum: 'text-cyan-300',
+  diamond:  'text-blue-300',
+  founder:  'text-amber-400',
+};
+
 export function Dashboard() {
   const [portfolio, setPortfolio] = useState<PortfolioStats | null>(null);
   const [trades, setTrades] = useState<Trade[]>([]);
@@ -98,6 +111,10 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<'main' | 'subscription'>('main');
+  const [subscription, setSubscription] = useState<{
+    tier: string; status: string; isFounder: boolean; features: string[];
+  } | null>(null);
 
   // Keep stable refs so WebSocket callbacks don't go stale
   const tradesRef = useRef(trades);
@@ -143,10 +160,11 @@ export function Dashboard() {
     else setRefreshing(true);
     setError('');
     try {
-      const [portfolioRes, tradesRes, signalsRes] = await Promise.allSettled([
+      const [portfolioRes, tradesRes, signalsRes, subRes] = await Promise.allSettled([
         api.getPortfolio(),
         api.getTrades({ limit: 10 }),
         api.getSignals(),
+        api.getSubscription(),
       ]);
 
       if (portfolioRes.status === 'fulfilled') {
@@ -160,6 +178,9 @@ export function Dashboard() {
       if (signalsRes.status === 'fulfilled') {
         const s = signalsRes.value as { signals?: Signal[] };
         setSignals((s.signals ?? []).slice(0, 6));
+      }
+      if (subRes.status === 'fulfilled') {
+        setSubscription(subRes.value.subscription);
       }
     } catch {
       setError('Failed to load dashboard data. Check your connection.');
@@ -182,16 +203,47 @@ export function Dashboard() {
     );
   }
 
+  if (view === 'subscription') {
+    return (
+      <div>
+        <div className="px-6 pt-6">
+          <button
+            onClick={() => setView('main')}
+            className="text-sm text-gray-400 hover:text-white transition-colors mb-2"
+          >
+            ← Back to Dashboard
+          </button>
+        </div>
+        <SubscriptionPage
+          currentTier={subscription?.tier ?? 'free'}
+          isFounder={subscription?.isFounder ?? false}
+        />
+      </div>
+    );
+  }
+
   const netPnL = (portfolio?.totalProfit ?? 0) - (portfolio?.totalLoss ?? 0);
   const netPositive = netPnL >= 0;
+  const tier = subscription?.tier ?? 'free';
+  const isFounder = subscription?.isFounder ?? false;
 
   return (
     <div className="min-h-screen bg-[#050508] text-white px-6 py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold">Dashboard</h1>
-          <p className="text-gray-500 text-sm mt-0.5">Welcome back. Here's your portfolio overview.</p>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            {/* Tier badge */}
+            <button
+              onClick={() => setView('subscription')}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border bg-white/5 hover:bg-white/10 transition-colors capitalize ${TIER_COLORS[tier] ?? 'text-gray-400'} border-current/20`}
+            >
+              {isFounder ? <Crown className="w-3 h-3" /> : <Star className="w-3 h-3" />}
+              {tier}
+            </button>
+          </div>
+          <p className="text-gray-500 text-sm">Welcome back. Here's your portfolio overview.</p>
         </div>
         <div className="flex items-center gap-3">
           {/* WebSocket status pill */}
@@ -209,6 +261,13 @@ export function Dashboard() {
               : <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" /> Connecting</>
             }
           </div>
+          <button
+            onClick={() => setView('subscription')}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <CreditCard className="w-4 h-4" />
+            Plans
+          </button>
           <button
             onClick={() => load(true)}
             disabled={refreshing}
@@ -258,9 +317,34 @@ export function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Live Signals */}
-        <div className="lg:col-span-1">
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5 h-full">
+        {/* Left column: wallet + subscription card */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          {/* Wallet */}
+          <WalletConnect />
+
+          {/* Subscription card */}
+          <div
+            onClick={() => setView('subscription')}
+            className="bg-white/5 border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center`}>
+                {isFounder ? <Crown className="w-4 h-4 text-amber-400" /> : <Star className="w-4 h-4 text-gray-400" />}
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold capitalize">{tier} Plan</p>
+                <p className="text-gray-500 text-xs">{isFounder ? 'Lifetime access — all features' : 'Click to view all plans'}</p>
+              </div>
+            </div>
+            {!isFounder && (
+              <div className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300">
+                <Zap className="w-3 h-3" /> Upgrade for more features →
+              </div>
+            )}
+          </div>
+
+          {/* Live Signals */}
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex-1">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">
                 Live Signals
@@ -301,7 +385,7 @@ export function Dashboard() {
               </div>
             )}
           </div>
-        </div>
+        </div>{/* end left column */}
 
         {/* Recent Trades */}
         <div className="lg:col-span-2">

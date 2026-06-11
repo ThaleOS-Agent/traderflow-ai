@@ -80,4 +80,21 @@ export const api = {
   async getPortfolio() {
     return request<Record<string, unknown>>('/user/portfolio');
   },
+
+  async getSubscription() {
+    return request<{
+      success: boolean;
+      subscription: {
+        tier: string;
+        status: string;
+        expiresAt?: string;
+        isFounder: boolean;
+        features: string[];
+      };
+    }>('/wallet/subscription');
+  },
+
+  async getTiers() {
+    return request<Record<string, unknown>>('/wallet/tiers');
+  },
 };

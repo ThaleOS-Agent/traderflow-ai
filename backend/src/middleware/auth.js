@@ -33,7 +33,7 @@ export const authenticate = async (req, res, next) => {
     }
     
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'tradeflow-secret');
     
     // Get user from database
     const user = await User.findById(decoded.userId);
@@ -103,9 +103,9 @@ export const optionalAuth = async (req, res, next) => {
       return next();
     }
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'tradeflow-secret');
     const user = await User.findById(decoded.userId);
-    
+
     if (user && user.isActive) {
       req.user = user;
       req.userId = user._id.toString();
@@ -130,7 +130,7 @@ export const generateToken = (user) => {
       walletAddress: user.walletAddress,
       tier: user.subscription?.tier || 'free'
     },
-    process.env.JWT_SECRET || 'your-secret-key',
+    process.env.JWT_SECRET || 'tradeflow-secret',
     { expiresIn: '24h' }
   );
 };

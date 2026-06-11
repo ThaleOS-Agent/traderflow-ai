@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:backend": "cd backend && npm install",
+    "build:all": "npm run build && npm run build:backend",
+    "start": "NODE_ENV=production node backend/src/server.js",
+    "dev:backend": "cd backend && npm run dev",
+    "deploy": "bash deploy.sh",
+    "deploy:railway": "bash deploy.sh --railway"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

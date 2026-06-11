@@ -5,6 +5,11 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 import { connectDB } from './config/database.js';
 import { logger } from './utils/logger.js';
@@ -62,12 +67,23 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting — general
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 app.use(limiter);
+
+// Stricter rate limit for auth endpoints (5 req / 15 min per IP)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many auth attempts, please try again later' },
+});
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -143,7 +159,7 @@ assetScanner.onOpportunity = async (opportunity) => {
 };
 
 // Routes
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/trades', tradeRoutes);
 app.use('/api/strategies', strategyRoutes);
@@ -186,6 +202,17 @@ app.get('/api/health', (req, res) => {
     notificationSubscriptions: notificationService.getStats?.()?.totalSubscriptions || 0
   });
 });
+
+// Serve frontend static files in production
+const frontendDist = join(__dirname, '../../../dist');
+if (process.env.NODE_ENV === 'production' && existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  // SPA fallback — serve index.html for all non-API routes
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/ws')) return next();
+    res.sendFile(join(frontendDist, 'index.html'));
+  });
+}
 
 // Error handling
 app.use((err, req, res, next) => {

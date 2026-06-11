@@ -2,9 +2,11 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "RAILPACK",
-    "buildEnvironment": "V3"
+    "buildEnvironment": "V3",
+    "buildCommand": "npm run build:all"
   },
   "deploy": {
+    "startCommand": "npm start",
     "runtime": "V2",
     "numReplicas": 1,
     "sleepApplication": false,

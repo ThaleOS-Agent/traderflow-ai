@@ -9,6 +9,8 @@ import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
 import { WalletConnect } from './WalletConnect';
 import { SubscriptionPage } from './SubscriptionPage';
+import { TradingViewChart } from './TradingViewChart';
+import { MT5Panel } from './MT5Panel';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -316,11 +318,19 @@ export function Dashboard() {
         />
       </div>
 
+      {/* Live Chart — full width */}
+      <div className="mb-6">
+        <TradingViewChart />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: wallet + subscription card */}
+        {/* Left column: wallet + MT5 + subscription card */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           {/* Wallet */}
           <WalletConnect />
+
+          {/* MT5 Panel */}
+          <MT5Panel />
 
           {/* Subscription card */}
           <div

@@ -97,4 +97,28 @@ export const api = {
   async getTiers() {
     return request<Record<string, unknown>>('/wallet/tiers');
   },
+
+  async getMt5Status() {
+    return request<{
+      success: boolean;
+      mode: 'bridge' | 'metaapi' | 'mock';
+      account: Record<string, unknown>;
+    }>('/mt5/status');
+  },
+
+  async getMt5Positions() {
+    return request<{ success: boolean; positions: Record<string, unknown>[] }>('/mt5/positions');
+  },
+
+  async getMt5Orders() {
+    return request<{ success: boolean; orders: Record<string, unknown>[] }>('/mt5/orders');
+  },
+
+  async getKlines(symbol: string, interval = '1h', exchange?: string) {
+    const q = new URLSearchParams({ interval, limit: '200' });
+    if (exchange) q.set('exchange', exchange);
+    return request<{ klines: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }> }>(
+      `/exchange/klines/${symbol}?${q}`
+    );
+  },
 };

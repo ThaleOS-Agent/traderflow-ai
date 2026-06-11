@@ -53,6 +53,7 @@ import optionsRoutes from './routes/options.js';
 import trainingRoutes from './routes/training.js';
 import walletRoutes from './routes/wallet.js';
 import forexRoutes from './routes/forex.js';
+import mt5Routes from './routes/mt5.js';
 
 dotenv.config();
 
@@ -180,6 +181,7 @@ app.use('/api/options', optionsRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/forex', forexRoutes);
+app.use('/api/mt5', mt5Routes);
 
 // Health check
 app.get('/api/health', (req, res) => {

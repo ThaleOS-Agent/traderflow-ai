@@ -118,7 +118,7 @@ function handleUnsubscribe(ws, payload) {
 
 function handleAuth(ws, token) {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'tradeflow-secret');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     ws.userId = decoded.userId;
     ws.isAuthenticated = true;
     

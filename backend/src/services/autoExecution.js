@@ -52,17 +52,17 @@ export class AutoExecutionEngine {
         riskLevel: user.tradingSettings?.riskLevel || 'medium'
       };
 
-      // Setup exchange connectors
+      // Setup exchange connectors (keys decrypted from DB at-rest encryption)
       const exchanges = new Map();
-      
-      for (const exchangeConfig of user.exchanges || []) {
+
+      for (const exchangeConfig of user.getDecryptedExchanges()) {
         if (!exchangeConfig.isActive) continue;
-        
+
         const connector = new MultiExchangeConnector(
           exchangeConfig.name,
           exchangeConfig.isTestnet
         );
-        
+
         if (exchangeConfig.apiKey && exchangeConfig.apiSecret) {
           connector.setCredentials(
             exchangeConfig.apiKey,
@@ -70,7 +70,7 @@ export class AutoExecutionEngine {
             exchangeConfig.passphrase
           );
         }
-        
+
         exchanges.set(exchangeConfig.name, connector);
       }
 

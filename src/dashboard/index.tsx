@@ -219,6 +219,14 @@ export function Dashboard() {
         <SubscriptionPage
           currentTier={subscription?.tier ?? 'free'}
           isFounder={subscription?.isFounder ?? false}
+          onUpgrade={(tier) => {
+            // Direct to founder contact for now; payment integration is a future milestone
+            if (tier === 'founder') {
+              window.location.href = 'mailto:founder@tradeflow.ai?subject=Founder Access Request';
+            } else {
+              window.location.href = `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
+            }
+          }}
         />
       </div>
     );

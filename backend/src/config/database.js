@@ -3,7 +3,7 @@ import { logger } from '../utils/logger.js';
 
 export const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/tradeflow', {
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
       // MongoDB connection options
     });
     logger.info(`MongoDB Connected: ${conn.connection.host}`);

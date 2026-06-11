@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 
 import { connectDB } from './config/database.js';
+import { validateEnv } from './config/validateEnv.js';
 import { logger } from './utils/logger.js';
 import { setupWebSocket } from './services/websocketService.js';
 import { TradingEngine } from './services/tradingEngine.js';
@@ -195,6 +196,8 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
+
+validateEnv();
 
 const PORT = process.env.PORT || 3001;
 

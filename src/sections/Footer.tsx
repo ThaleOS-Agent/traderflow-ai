@@ -1,5 +1,27 @@
 import { TrendingUp, Github, Twitter, MessageCircle } from 'lucide-react';
 
+const PLATFORM_LINKS: { label: string; href: string }[] = [
+  { label: 'Strategies',    href: '#features' },
+  { label: 'Signals',       href: '#features' },
+  { label: 'Backtesting',   href: '#features' },
+  { label: 'Risk Manager',  href: '#features' },
+  { label: 'Social Trading',href: '#features' },
+];
+
+const COMPANY_LINKS: { label: string; href: string }[] = [
+  { label: 'About',            href: '#about' },
+  { label: 'Pricing',          href: '#pricing' },
+  { label: 'Documentation',    href: 'mailto:support@tradeflow.ai?subject=Documentation' },
+  { label: 'Support',          href: 'mailto:support@tradeflow.ai' },
+  { label: 'Terms of Service', href: 'mailto:legal@tradeflow.ai?subject=Terms+of+Service' },
+];
+
+const SOCIAL_LINKS = [
+  { Icon: Twitter,       href: 'https://twitter.com/tradeflowai' },
+  { Icon: Github,        href: 'https://github.com/thaleos-agent/traderflow-ai' },
+  { Icon: MessageCircle, href: 'https://discord.gg/tradeflowai' },
+];
+
 const Footer = () => {
   const year = new Date().getFullYear();
 
@@ -22,10 +44,12 @@ const Footer = () => {
               Built for serious traders who demand edge.
             </p>
             <div className="flex gap-3 mt-6">
-              {[Twitter, Github, MessageCircle].map((Icon, i) => (
+              {SOCIAL_LINKS.map(({ Icon, href }) => (
                 <a
-                  key={i}
-                  href="#"
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
                   className="w-9 h-9 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-gray-400 hover:text-white transition-colors"
                 >
                   <Icon className="w-4 h-4" />
@@ -38,9 +62,9 @@ const Footer = () => {
           <div>
             <h4 className="text-white text-sm font-semibold mb-4 uppercase tracking-wider">Platform</h4>
             <ul className="space-y-2.5">
-              {['Strategies', 'Signals', 'Backtesting', 'Risk Manager', 'Social Trading'].map(item => (
-                <li key={item}>
-                  <a href="#" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">{item}</a>
+              {PLATFORM_LINKS.map(({ label, href }) => (
+                <li key={label}>
+                  <a href={href} className="text-gray-500 hover:text-gray-300 text-sm transition-colors">{label}</a>
                 </li>
               ))}
             </ul>
@@ -50,9 +74,15 @@ const Footer = () => {
           <div>
             <h4 className="text-white text-sm font-semibold mb-4 uppercase tracking-wider">Company</h4>
             <ul className="space-y-2.5">
-              {['About', 'Pricing', 'Documentation', 'Support', 'Terms of Service'].map(item => (
-                <li key={item}>
-                  <a href="#" className="text-gray-500 hover:text-gray-300 text-sm transition-colors">{item}</a>
+              {COMPANY_LINKS.map(({ label, href }) => (
+                <li key={label}>
+                  <a
+                    href={href}
+                    target={href.startsWith('mailto') ? undefined : '_self'}
+                    className="text-gray-500 hover:text-gray-300 text-sm transition-colors"
+                  >
+                    {label}
+                  </a>
                 </li>
               ))}
             </ul>

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
-  ArrowUpRight, ArrowDownRight,
+  ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
 } from 'lucide-react';
 import { api } from './api';
+import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +99,45 @@ export function Dashboard() {
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
+  // Keep stable refs so WebSocket callbacks don't go stale
+  const tradesRef = useRef(trades);
+  const signalsRef = useRef(signals);
+  useEffect(() => { tradesRef.current = trades; }, [trades]);
+  useEffect(() => { signalsRef.current = signals; }, [signals]);
+
+  // Live WebSocket updates
+  const handleSignal = useCallback((sig: LiveSignal) => {
+    setSignals(prev => {
+      const exists = prev.some(s => s._id === sig._id);
+      if (exists) return prev;
+      return [sig, ...prev].slice(0, 6);
+    });
+  }, []);
+
+  const handleTrade = useCallback((trade: LiveTrade) => {
+    setTrades(prev => {
+      const idx = prev.findIndex(t => t._id === trade._id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = trade as Trade;
+        return next;
+      }
+      return [trade as Trade, ...prev].slice(0, 10);
+    });
+  }, []);
+
+  const { status: wsStatus } = useTradeWebSocket({
+    onSignal: handleSignal,
+    onTrade: handleTrade,
+    onPortfolioUpdate: useCallback(() => {
+      // Refresh portfolio stats on any server-pushed portfolio event
+      api.getPortfolio().then(res => {
+        const p = res as { portfolio?: PortfolioStats };
+        if (p.portfolio) setPortfolio(p.portfolio);
+      }).catch(() => {/* non-critical */});
+    }, []),
+  });
+
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -153,14 +193,31 @@ export function Dashboard() {
           <h1 className="text-2xl font-bold">Dashboard</h1>
           <p className="text-gray-500 text-sm mt-0.5">Welcome back. Here's your portfolio overview.</p>
         </div>
-        <button
-          onClick={() => load(true)}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-3">
+          {/* WebSocket status pill */}
+          <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
+            wsStatus === 'authenticated'
+              ? 'bg-green-500/10 border-green-500/20 text-green-400'
+              : wsStatus === 'connected' || wsStatus === 'connecting'
+              ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
+              : 'bg-white/5 border-white/10 text-gray-500'
+          }`}>
+            {wsStatus === 'authenticated'
+              ? <><Wifi className="w-3 h-3" /> Live</>
+              : wsStatus === 'disconnected'
+              ? <><WifiOff className="w-3 h-3" /> Offline</>
+              : <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" /> Connecting</>
+            }
+          </div>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -208,9 +265,9 @@ export function Dashboard() {
               <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">
                 Live Signals
               </h2>
-              <span className="flex items-center gap-1.5 text-xs text-green-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-                Live
+              <span className={`flex items-center gap-1.5 text-xs ${wsStatus === 'authenticated' ? 'text-green-400' : 'text-gray-500'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'authenticated' ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
+                {wsStatus === 'authenticated' ? 'Live' : 'Polling'}
               </span>
             </div>
 

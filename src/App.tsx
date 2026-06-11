@@ -1,15 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import './index.css';
 import useLenis from './hooks/useLenis';
 import { siteConfig } from './config';
 import Hero from './sections/Hero';
-import StrategyCube from './sections/StrategyCube';
 import ParallaxGallery from './sections/ParallaxGallery';
 import TourSchedule from './sections/TourSchedule';
 import Footer from './sections/Footer';
 import { Dashboard } from './dashboard';
 import { LoginPage } from './dashboard/LoginPage';
 import { api } from './dashboard/api';
+
+// Lazy-load the Three.js cube — keeps it out of the initial JS chunk (~400 kB saving)
+const StrategyCube = lazy(() => import('./sections/StrategyCube'));
 
 function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'login' | 'dashboard'>('landing');
@@ -134,8 +136,14 @@ function App() {
         <Hero />
       </div>
 
-      {/* Strategy Cube Section - 3D showcase */}
-      <StrategyCube />
+      {/* Strategy Cube Section - 3D showcase (lazy-loaded) */}
+      <Suspense fallback={
+        <div className="relative bg-[#050508] py-24 flex items-center justify-center h-[600px]">
+          <div className="w-10 h-10 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
+        </div>
+      }>
+        <StrategyCube />
+      </Suspense>
 
       {/* Parallax Gallery Section */}
       <ParallaxGallery />

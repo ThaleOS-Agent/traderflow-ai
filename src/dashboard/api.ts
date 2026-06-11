@@ -1,174 +1,124 @@
-import axios from 'axios';
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios';
-
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 const TOKEN_KEY = 'tradeflow_token';
 
-const client: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3001',
-  headers: { 'Content-Type': 'application/json' },
-});
-
-client.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY);
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error || `HTTP ${res.status}`);
   }
-  return config;
-});
 
-client.interceptors.response.use(
-  (res: AxiosResponse) => res,
-  (err: AxiosError) => {
-    if (err.response?.status === 401) {
-      localStorage.removeItem(TOKEN_KEY);
-      window.location.href = '/';
-    }
-    return Promise.reject(err);
-  }
-);
-
-export interface User {
-  _id: string;
-  email: string;
-  firstName: string;
-  lastName: string;
-  portfolio: {
-    totalBalance: number;
-    availableBalance: number;
-    investedAmount: number;
-    totalProfit: number;
-    totalLoss: number;
-    winRate: number;
-    totalTrades: number;
-    winningTrades: number;
-    losingTrades: number;
-  };
-  tradingSettings: {
-    autoTrading: boolean;
-    paperTrading: boolean;
-    defaultStrategy: string;
-    riskLevel: string;
-  };
-}
-
-export interface Trade {
-  _id: string;
-  symbol: string;
-  assetType: string;
-  side: 'buy' | 'sell';
-  entryPrice: number;
-  quantity: number;
-  stopLoss?: number;
-  takeProfit?: number;
-  status: 'pending' | 'open' | 'closed' | 'cancelled';
-  profit?: number;
-  openedAt: string;
-  closedAt?: string;
-  isPaperTrade: boolean;
-  strategy: string;
-}
-
-export interface MarketDataItem {
-  symbol: string;
-  price: number;
-  volume: number;
-  high24h: number;
-  low24h: number;
-  change24h: number;
-  assetType: string;
-  lastUpdated: string;
-}
-
-export interface DashboardOverview {
-  portfolio: User['portfolio'];
-  tradingSettings: User['tradingSettings'];
-  openPositions: Trade[];
-  openPositionsCount: number;
-  todayTradesCount: number;
-  todayPnL: number;
-  recentSignals: unknown[];
-  marketData: MarketDataItem[];
-  engineStatus: { running: boolean; uptime: number };
+  return res.json() as Promise<T>;
 }
 
 export const api = {
   isAuthenticated(): boolean {
-    return !!localStorage.getItem(TOKEN_KEY);
-  },
-
-  getToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
-  },
-
-  setToken(token: string): void {
-    localStorage.setItem(TOKEN_KEY, token);
+    return Boolean(localStorage.getItem(TOKEN_KEY));
   },
 
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
   },
 
-  async login(email: string, password: string): Promise<{ token: string; user: User }> {
-    const res = await client.post<{ token: string; user: User }>('/api/auth/login', { email, password });
-    api.setToken(res.data.token);
-    return res.data;
+  async login(email: string, password: string) {
+    const data = await request<{ token: string; user: Record<string, unknown> }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    localStorage.setItem(TOKEN_KEY, data.token);
+    return data;
   },
 
-  async register(data: {
+  async register(payload: {
     email: string;
     password: string;
     firstName: string;
     lastName: string;
     phone?: string;
     country?: string;
-  }): Promise<{ token: string; user: User }> {
-    const res = await client.post<{ token: string; user: User }>('/api/auth/register', data);
-    api.setToken(res.data.token);
-    return res.data;
-  },
-
-  async getMe(): Promise<User> {
-    const res = await client.get<{ user: User }>('/api/auth/me');
-    return res.data.user;
-  },
-
-  async getDashboardOverview(): Promise<DashboardOverview> {
-    const res = await client.get<DashboardOverview>('/api/dashboard/overview');
-    return res.data;
-  },
-
-  async getMarketData(): Promise<MarketDataItem[]> {
-    const res = await client.get<{ marketData: MarketDataItem[] }>('/api/dashboard/market-data');
-    return res.data.marketData;
-  },
-
-  async getPerformanceChart(timeframe = '30d'): Promise<unknown[]> {
-    const res = await client.get<{ chartData: unknown[] }>('/api/dashboard/performance-chart', {
-      params: { timeframe },
+  }) {
+    const data = await request<{ token: string; user: Record<string, unknown> }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
-    return res.data.chartData;
+    localStorage.setItem(TOKEN_KEY, data.token);
+    return data;
   },
 
-  async getTrades(params?: { status?: string; limit?: number; page?: number }): Promise<{
-    trades: Trade[];
-    pagination: { total: number; page: number; pages: number };
-  }> {
-    const res = await client.get('/api/trades', { params });
-    return res.data;
+  async getMe() {
+    return request<{ user: Record<string, unknown> }>('/auth/me');
   },
 
-  async closeTrade(id: string): Promise<Trade> {
-    const res = await client.post<{ trade: Trade }>(`/api/trades/${id}/close`);
-    return res.data.trade;
+  async getDashboard() {
+    return request<Record<string, unknown>>('/dashboard');
   },
 
-  async getTradeStats(timeframe = '30d'): Promise<unknown> {
-    const res = await client.get('/api/trades/stats/overview', { params: { timeframe } });
-    return res.data.stats;
+  async getTrades(params?: { page?: number; limit?: number }) {
+    const query = new URLSearchParams();
+    if (params?.page)  query.set('page',  String(params.page));
+    if (params?.limit) query.set('limit', String(params.limit));
+    return request<Record<string, unknown>>(`/trades?${query}`);
   },
 
-  async getBotStatus(): Promise<unknown> {
-    const res = await client.get('/api/dashboard/bot-status');
-    return res.data;
+  async getSignals() {
+    return request<Record<string, unknown>>('/signals');
+  },
+
+  async getStrategies() {
+    return request<Record<string, unknown>>('/strategies');
+  },
+
+  async getPortfolio() {
+    return request<Record<string, unknown>>('/user/portfolio');
+  },
+
+  async getSubscription() {
+    return request<{
+      success: boolean;
+      subscription: {
+        tier: string;
+        status: string;
+        expiresAt?: string;
+        isFounder: boolean;
+        features: string[];
+      };
+    }>('/wallet/subscription');
+  },
+
+  async getTiers() {
+    return request<Record<string, unknown>>('/wallet/tiers');
+  },
+
+  async getMt5Status() {
+    return request<{
+      success: boolean;
+      mode: 'bridge' | 'metaapi' | 'mock';
+      account: Record<string, unknown>;
+    }>('/mt5/status');
+  },
+
+  async getMt5Positions() {
+    return request<{ success: boolean; positions: Record<string, unknown>[] }>('/mt5/positions');
+  },
+
+  async getMt5Orders() {
+    return request<{ success: boolean; orders: Record<string, unknown>[] }>('/mt5/orders');
+  },
+
+  async getKlines(symbol: string, interval = '1h', exchange?: string) {
+    const q = new URLSearchParams({ interval, limit: '200' });
+    if (exchange) q.set('exchange', exchange);
+    return request<{ klines: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }> }>(
+      `/exchange/klines/${symbol}?${q}`
+    );
   },
 };

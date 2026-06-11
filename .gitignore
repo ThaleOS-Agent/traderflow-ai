@@ -7,7 +7,7 @@ dist/
 build/
 backend/dist/
 
-# Environment variables
+# Environment variables — NEVER commit these
 .env
 .env.local
 .env.*.local
@@ -29,3 +29,6 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Testing
+coverage/

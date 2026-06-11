@@ -1,45 +1,92 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  LayoutDashboard,
-  TrendingUp,
-  BarChart2,
-  Settings,
-  Activity,
-  ChevronRight,
-  ArrowUpRight,
-  ArrowDownRight,
-  Loader2,
+  TrendingUp, Activity, DollarSign,
+  BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
+  ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
+  Crown, Star, CreditCard,
 } from 'lucide-react';
 import { api } from './api';
-import type { DashboardOverview, MarketDataItem } from './api';
+import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
+import { WalletConnect } from './WalletConnect';
+import { SubscriptionPage } from './SubscriptionPage';
+import { TradingViewChart } from './TradingViewChart';
+import { MT5Panel } from './MT5Panel';
 
-type NavItem = 'overview' | 'trades' | 'markets' | 'settings';
+// ── Types ──────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS: { id: NavItem; label: string; icon: typeof LayoutDashboard }[] = [
-  { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'trades', label: 'Trades', icon: TrendingUp },
-  { id: 'markets', label: 'Markets', icon: BarChart2 },
-  { id: 'settings', label: 'Settings', icon: Settings },
-];
+interface PortfolioStats {
+  totalBalance: number;
+  availableBalance: number;
+  investedAmount: number;
+  totalProfit: number;
+  totalLoss: number;
+  winRate: number;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+}
+
+interface Trade {
+  _id: string;
+  symbol: string;
+  side: 'BUY' | 'SELL';
+  status: string;
+  entryPrice: number;
+  exitPrice?: number;
+  quantity: number;
+  profitLoss?: number;
+  strategy: string;
+  createdAt: string;
+}
+
+interface Signal {
+  _id: string;
+  symbol: string;
+  side: string;
+  strategy: string;
+  confidenceScore: number;
+  entryPrice: number;
+  stopLoss: number;
+  takeProfit: number;
+  createdAt: string;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function fmt(n: number, decimals = 2) {
+  return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function fmtUsd(n: number) {
+  return `$${fmt(Math.abs(n))}`;
+}
 
 function StatCard({
+  icon: Icon,
   label,
   value,
   sub,
   positive,
 }: {
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   sub?: string;
   positive?: boolean;
 }) {
   return (
-    <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-5 backdrop-blur-sm">
-      <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{label}</p>
+    <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-gray-400 text-xs font-mono-custom uppercase tracking-wider">{label}</span>
+        <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center">
+          <Icon className="w-4 h-4 text-cyan-400" />
+        </div>
+      </div>
       <p className="text-2xl font-bold text-white">{value}</p>
       {sub && (
-        <p className={`text-xs mt-1 flex items-center gap-1 ${positive ? 'text-green-400' : 'text-red-400'}`}>
-          {positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
+        <p className={`text-xs mt-1 flex items-center gap-1 ${positive === true ? 'text-green-400' : positive === false ? 'text-red-400' : 'text-gray-500'}`}>
+          {positive === true && <ArrowUpRight className="w-3 h-3" />}
+          {positive === false && <ArrowDownRight className="w-3 h-3" />}
           {sub}
         </p>
       )}
@@ -47,182 +94,379 @@ function StatCard({
   );
 }
 
-function OverviewPanel({ data }: { data: DashboardOverview }) {
-  const { portfolio, todayPnL, openPositionsCount, todayTradesCount } = data;
-  const pnlPositive = todayPnL >= 0;
+// ── Main Dashboard ─────────────────────────────────────────────────────────
 
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          label="Total Balance"
-          value={`$${portfolio.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-        />
-        <StatCard
-          label="Today's P&L"
-          value={`${pnlPositive ? '+' : ''}$${todayPnL.toFixed(2)}`}
-          positive={pnlPositive}
-          sub={pnlPositive ? 'Profitable day' : 'Loss today'}
-        />
-        <StatCard label="Open Positions" value={String(openPositionsCount)} />
-        <StatCard
-          label="Win Rate"
-          value={`${portfolio.winRate.toFixed(1)}%`}
-          sub={`${todayTradesCount} trades today`}
-          positive={portfolio.winRate >= 50}
-        />
-      </div>
-
-      {/* Open positions */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <h2 className="text-sm font-semibold text-white">Open Positions</h2>
-          <span className="text-xs text-gray-500">{openPositionsCount} active</span>
-        </div>
-        {data.openPositions.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-gray-600">No open positions</div>
-        ) : (
-          <div className="divide-y divide-gray-800/60">
-            {data.openPositions.map((t) => (
-              <div key={t._id} className="flex items-center justify-between px-5 py-3">
-                <div>
-                  <p className="text-sm font-medium text-white">{t.symbol}</p>
-                  <p className="text-xs text-gray-500 uppercase">{t.side} · {t.assetType}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-white">${t.entryPrice.toLocaleString()}</p>
-                  <p className={`text-xs ${(t.profit ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {(t.profit ?? 0) >= 0 ? '+' : ''}{(t.profit ?? 0).toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function MarketsPanel({ data }: { data: MarketDataItem[] }) {
-  return (
-    <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-800">
-        <h2 className="text-sm font-semibold text-white">Live Market Data</h2>
-      </div>
-      <div className="divide-y divide-gray-800/60">
-        {data.map((item) => {
-          const positive = item.change24h >= 0;
-          return (
-            <div key={item.symbol} className="flex items-center justify-between px-5 py-3">
-              <div>
-                <p className="text-sm font-medium text-white">{item.symbol}</p>
-                <p className="text-xs text-gray-500 uppercase">{item.assetType}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-sm text-white">${item.price.toLocaleString()}</p>
-                <p className={`text-xs flex items-center justify-end gap-1 ${positive ? 'text-green-400' : 'text-red-400'}`}>
-                  {positive ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                  {positive ? '+' : ''}{item.change24h.toFixed(2)}%
-                </p>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+const TIER_COLORS: Record<string, string> = {
+  free:     'text-gray-400',
+  bronze:   'text-orange-400',
+  silver:   'text-slate-300',
+  gold:     'text-yellow-400',
+  platinum: 'text-cyan-300',
+  diamond:  'text-blue-300',
+  founder:  'text-amber-400',
+};
 
 export function Dashboard() {
-  const [activeNav, setActiveNav] = useState<NavItem>('overview');
-  const [overview, setOverview] = useState<DashboardOverview | null>(null);
-  const [markets, setMarkets] = useState<MarketDataItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [portfolio, setPortfolio] = useState<PortfolioStats | null>(null);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const [view, setView] = useState<'main' | 'subscription'>('main');
+  const [subscription, setSubscription] = useState<{
+    tier: string; status: string; isFounder: boolean; features: string[];
+  } | null>(null);
 
-  useEffect(() => {
-    Promise.all([api.getDashboardOverview(), api.getMarketData()])
-      .then(([ov, mkt]) => {
-        setOverview(ov);
-        setMarkets(mkt);
-      })
-      .catch(() => setError('Failed to load dashboard data.'))
-      .finally(() => setIsLoading(false));
+  // Keep stable refs so WebSocket callbacks don't go stale
+  const tradesRef = useRef(trades);
+  const signalsRef = useRef(signals);
+  useEffect(() => { tradesRef.current = trades; }, [trades]);
+  useEffect(() => { signalsRef.current = signals; }, [signals]);
+
+  // Live WebSocket updates
+  const handleSignal = useCallback((sig: LiveSignal) => {
+    setSignals(prev => {
+      const exists = prev.some(s => s._id === sig._id);
+      if (exists) return prev;
+      return [sig, ...prev].slice(0, 6);
+    });
   }, []);
 
-  return (
-    <div className="flex min-h-[calc(100vh-4rem)]">
-      {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 bg-gray-900/40 border-r border-gray-800 py-6 px-3 hidden md:flex flex-col gap-1">
-        {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+  const handleTrade = useCallback((trade: LiveTrade) => {
+    setTrades(prev => {
+      const idx = prev.findIndex(t => t._id === trade._id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = trade as Trade;
+        return next;
+      }
+      return [trade as Trade, ...prev].slice(0, 10);
+    });
+  }, []);
+
+  const { status: wsStatus } = useTradeWebSocket({
+    onSignal: handleSignal,
+    onTrade: handleTrade,
+    onPortfolioUpdate: useCallback(() => {
+      // Refresh portfolio stats on any server-pushed portfolio event
+      api.getPortfolio().then(res => {
+        const p = res as { portfolio?: PortfolioStats };
+        if (p.portfolio) setPortfolio(p.portfolio);
+      }).catch(() => {/* non-critical */});
+    }, []),
+  });
+
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    setError('');
+    try {
+      const [portfolioRes, tradesRes, signalsRes, subRes] = await Promise.allSettled([
+        api.getPortfolio(),
+        api.getTrades({ limit: 10 }),
+        api.getSignals(),
+        api.getSubscription(),
+      ]);
+
+      if (portfolioRes.status === 'fulfilled') {
+        const p = portfolioRes.value as { portfolio?: PortfolioStats };
+        setPortfolio(p.portfolio ?? null);
+      }
+      if (tradesRes.status === 'fulfilled') {
+        const t = tradesRes.value as { trades?: Trade[] };
+        setTrades(t.trades ?? []);
+      }
+      if (signalsRes.status === 'fulfilled') {
+        const s = signalsRes.value as { signals?: Signal[] };
+        setSignals((s.signals ?? []).slice(0, 6));
+      }
+      if (subRes.status === 'fulfilled') {
+        setSubscription(subRes.value.subscription);
+      }
+    } catch {
+      setError('Failed to load dashboard data. Check your connection.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050508] flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-400 text-sm">Loading dashboard…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'subscription') {
+    return (
+      <div>
+        <div className="px-6 pt-6">
           <button
-            key={id}
-            onClick={() => setActiveNav(id)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors w-full text-left ${
-              activeNav === id
-                ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
-            }`}
+            onClick={() => setView('main')}
+            className="text-sm text-gray-400 hover:text-white transition-colors mb-2"
           >
-            <Icon className="w-4 h-4" />
-            <span>{label}</span>
-            {activeNav === id && <ChevronRight className="w-3.5 h-3.5 ml-auto" />}
+            ← Back to Dashboard
           </button>
-        ))}
-
-        <div className="mt-auto">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-green-500/10 border border-green-500/20">
-            <Activity className="w-3.5 h-3.5 text-green-400" />
-            <span className="text-xs text-green-400">Engine live</span>
-          </div>
         </div>
-      </aside>
+        <SubscriptionPage
+          currentTier={subscription?.tier ?? 'free'}
+          isFounder={subscription?.isFounder ?? false}
+        />
+      </div>
+    );
+  }
 
-      {/* Main content */}
-      <main className="flex-1 p-6 overflow-auto">
-        {/* Mobile nav */}
-        <div className="flex gap-2 mb-6 md:hidden overflow-x-auto pb-1">
-          {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+  const netPnL = (portfolio?.totalProfit ?? 0) - (portfolio?.totalLoss ?? 0);
+  const netPositive = netPnL >= 0;
+  const tier = subscription?.tier ?? 'free';
+  const isFounder = subscription?.isFounder ?? false;
+
+  return (
+    <div className="min-h-screen bg-[#050508] text-white px-6 py-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            {/* Tier badge */}
             <button
-              key={id}
-              onClick={() => setActiveNav(id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-colors ${
-                activeNav === id
-                  ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                  : 'text-gray-400 border border-gray-800 hover:border-gray-600'
-              }`}
+              onClick={() => setView('subscription')}
+              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border bg-white/5 hover:bg-white/10 transition-colors capitalize ${TIER_COLORS[tier] ?? 'text-gray-400'} border-current/20`}
             >
-              <Icon className="w-3.5 h-3.5" />
-              {label}
+              {isFounder ? <Crown className="w-3 h-3" /> : <Star className="w-3 h-3" />}
+              {tier}
             </button>
-          ))}
-        </div>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center h-64 gap-3 text-gray-500">
-            <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Loading dashboard…</span>
           </div>
-        ) : error ? (
-          <div className="flex items-center justify-center h-64 text-red-400 text-sm">{error}</div>
-        ) : (
-          <>
-            {activeNav === 'overview' && overview && <OverviewPanel data={overview} />}
-            {activeNav === 'markets' && <MarketsPanel data={markets} />}
-            {activeNav === 'trades' && (
-              <div className="text-center py-16 text-gray-600 text-sm">
-                Trades panel — coming soon
+          <p className="text-gray-500 text-sm">Welcome back. Here's your portfolio overview.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* WebSocket status pill */}
+          <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
+            wsStatus === 'authenticated'
+              ? 'bg-green-500/10 border-green-500/20 text-green-400'
+              : wsStatus === 'connected' || wsStatus === 'connecting'
+              ? 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400'
+              : 'bg-white/5 border-white/10 text-gray-500'
+          }`}>
+            {wsStatus === 'authenticated'
+              ? <><Wifi className="w-3 h-3" /> Live</>
+              : wsStatus === 'disconnected'
+              ? <><WifiOff className="w-3 h-3" /> Offline</>
+              : <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" /> Connecting</>
+            }
+          </div>
+          <button
+            onClick={() => setView('subscription')}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <CreditCard className="w-4 h-4" />
+            Plans
+          </button>
+          <button
+            onClick={() => load(true)}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 bg-red-400/10 border border-red-400/20 rounded-xl px-4 py-3 mb-6 text-red-400 text-sm">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
+      {/* Portfolio stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <StatCard
+          icon={DollarSign}
+          label="Total Balance"
+          value={fmtUsd(portfolio?.totalBalance ?? 0)}
+          sub={`Available: ${fmtUsd(portfolio?.availableBalance ?? 0)}`}
+        />
+        <StatCard
+          icon={TrendingUp}
+          label="Net P&L"
+          value={`${netPositive ? '+' : '-'}${fmtUsd(netPnL)}`}
+          sub={netPositive ? 'Overall profitable' : 'In drawdown'}
+          positive={netPositive}
+        />
+        <StatCard
+          icon={Activity}
+          label="Win Rate"
+          value={`${fmt(portfolio?.winRate ?? 0, 1)}%`}
+          sub={`${portfolio?.winningTrades ?? 0}W / ${portfolio?.losingTrades ?? 0}L`}
+          positive={(portfolio?.winRate ?? 0) >= 50}
+        />
+        <StatCard
+          icon={BarChart2}
+          label="Total Trades"
+          value={String(portfolio?.totalTrades ?? 0)}
+          sub={`Invested: ${fmtUsd(portfolio?.investedAmount ?? 0)}`}
+        />
+      </div>
+
+      {/* Live Chart — full width */}
+      <div className="mb-6">
+        <TradingViewChart />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left column: wallet + MT5 + subscription card */}
+        <div className="lg:col-span-1 flex flex-col gap-4">
+          {/* Wallet */}
+          <WalletConnect />
+
+          {/* MT5 Panel */}
+          <MT5Panel />
+
+          {/* Subscription card */}
+          <div
+            onClick={() => setView('subscription')}
+            className="bg-white/5 border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-colors"
+          >
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center`}>
+                {isFounder ? <Crown className="w-4 h-4 text-amber-400" /> : <Star className="w-4 h-4 text-gray-400" />}
+              </div>
+              <div>
+                <p className="text-white text-sm font-semibold capitalize">{tier} Plan</p>
+                <p className="text-gray-500 text-xs">{isFounder ? 'Lifetime access — all features' : 'Click to view all plans'}</p>
+              </div>
+            </div>
+            {!isFounder && (
+              <div className="flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300">
+                <Zap className="w-3 h-3" /> Upgrade for more features →
               </div>
             )}
-            {activeNav === 'settings' && (
-              <div className="text-center py-16 text-gray-600 text-sm">
-                Settings panel — coming soon
+          </div>
+
+          {/* Live Signals */}
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5 flex-1">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">
+                Live Signals
+              </h2>
+              <span className={`flex items-center gap-1.5 text-xs ${wsStatus === 'authenticated' ? 'text-green-400' : 'text-gray-500'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${wsStatus === 'authenticated' ? 'bg-green-400 animate-pulse' : 'bg-gray-600'}`} />
+                {wsStatus === 'authenticated' ? 'Live' : 'Polling'}
+              </span>
+            </div>
+
+            {signals.length === 0 ? (
+              <p className="text-gray-600 text-sm text-center py-8">No active signals</p>
+            ) : (
+              <div className="space-y-3">
+                {signals.map(sig => (
+                  <div key={sig._id} className="flex items-start justify-between p-3 bg-white/5 rounded-lg">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white text-sm font-semibold">{sig.symbol}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono-custom ${
+                          sig.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {sig.side}
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-xs mt-0.5">{sig.strategy}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-xs font-mono-custom font-bold ${
+                        sig.confidenceScore >= 80 ? 'text-green-400' : sig.confidenceScore >= 65 ? 'text-yellow-400' : 'text-red-400'
+                      }`}>
+                        {sig.confidenceScore}%
+                      </div>
+                      <div className="text-gray-600 text-xs">conf.</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
-          </>
-        )}
-      </main>
+          </div>
+        </div>{/* end left column */}
+
+        {/* Recent Trades */}
+        <div className="lg:col-span-2">
+          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+            <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300 mb-4">
+              Recent Trades
+            </h2>
+
+            {trades.length === 0 ? (
+              <div className="text-center py-12">
+                <Zap className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                <p className="text-gray-600 text-sm">No trades yet</p>
+                <p className="text-gray-700 text-xs mt-1">Enable auto-trading in settings to get started</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-600 text-xs uppercase tracking-wider border-b border-white/5">
+                      <th className="text-left pb-3">Symbol</th>
+                      <th className="text-left pb-3">Side</th>
+                      <th className="text-right pb-3">Entry</th>
+                      <th className="text-right pb-3">P&L</th>
+                      <th className="text-right pb-3">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {trades.map(trade => {
+                      const pnl = trade.profitLoss ?? 0;
+                      const pnlPositive = pnl >= 0;
+                      return (
+                        <tr key={trade._id} className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 text-white font-semibold">{trade.symbol}</td>
+                          <td className="py-3">
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-mono-custom ${
+                              trade.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                            }`}>
+                              {trade.side}
+                            </span>
+                          </td>
+                          <td className="py-3 text-right text-gray-400 font-mono-custom">
+                            {fmtUsd(trade.entryPrice)}
+                          </td>
+                          <td className={`py-3 text-right font-mono-custom font-semibold ${pnlPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {pnl !== 0 ? `${pnlPositive ? '+' : '-'}${fmtUsd(pnl)}` : '—'}
+                          </td>
+                          <td className="py-3 text-right">
+                            <span className="flex items-center justify-end gap-1 text-xs">
+                              {trade.status === 'CLOSED' ? (
+                                <><CheckCircle className="w-3 h-3 text-green-400" /><span className="text-gray-500">Closed</span></>
+                              ) : (
+                                <><Activity className="w-3 h-3 text-cyan-400 animate-pulse" /><span className="text-cyan-400">Open</span></>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Paper trading notice */}
+      <div className="mt-6 flex items-center gap-2 text-xs text-yellow-500/70 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-3">
+        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+        Paper trading mode is active by default. All trades use simulated funds. Enable live trading in Settings.
+      </div>
     </div>
   );
 }

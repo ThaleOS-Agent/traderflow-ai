@@ -9,16 +9,30 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, phone, country } = req.body;
-    
+
+    // Basic input validation
+    if (!email || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Valid email required' });
+    }
+    if (!password || typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: 'Password must be 8–128 characters' });
+    }
+    if (firstName && (typeof firstName !== 'string' || firstName.length > 50)) {
+      return res.status(400).json({ error: 'First name too long' });
+    }
+    if (lastName && (typeof lastName !== 'string' || lastName.length > 50)) {
+      return res.status(400).json({ error: 'Last name too long' });
+    }
+
     // Check if user exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
     if (existingUser) {
       return res.status(400).json({ error: 'Email already registered' });
     }
     
     // Create user
     const user = new User({
-      email,
+      email: email.toLowerCase(),
       password,
       firstName,
       lastName,

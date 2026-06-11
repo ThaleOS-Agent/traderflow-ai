@@ -61,8 +61,8 @@ export function hasFeatureAccess(userTier, feature) {
   
   const requiredTier = FEATURE_TIERS[feature];
   if (!requiredTier) {
-    // Feature not found, allow access (might be a new feature)
-    return true;
+    // Unknown feature — deny by default to prevent accidental exposure of new premium routes
+    return false;
   }
   
   const userTierIndex = TIER_HIERARCHY.indexOf(userTier);

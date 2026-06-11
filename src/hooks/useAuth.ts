@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../dashboard/api';
-import type { User } from '../dashboard/api';
+
+type UserRecord = Record<string, unknown>;
 
 interface AuthState {
-  user: User | null;
+  user: UserRecord | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -19,7 +20,10 @@ export function useAuth() {
     if (!api.isAuthenticated()) return;
 
     api.getMe()
-      .then((user) => setState({ user, isAuthenticated: true, isLoading: false }))
+      .then((data) => {
+        const user = (data as { user?: UserRecord }).user ?? (data as UserRecord);
+        setState({ user, isAuthenticated: true, isLoading: false });
+      })
       .catch(() => {
         api.logout();
         setState({ user: null, isAuthenticated: false, isLoading: false });
@@ -27,7 +31,8 @@ export function useAuth() {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const { user } = await api.login(email, password);
+    const data = await api.login(email, password);
+    const user = (data as { user?: UserRecord }).user ?? null;
     setState({ user, isAuthenticated: true, isLoading: false });
     return user;
   }, []);

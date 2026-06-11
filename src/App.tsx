@@ -9,6 +9,7 @@ import Footer from './sections/Footer';
 import { Dashboard } from './dashboard';
 import { LoginPage } from './dashboard/LoginPage';
 import { api } from './dashboard/api';
+import { Analytics } from '@vercel/analytics/react';
 
 // Lazy-load the Three.js cube — keeps it out of the initial JS chunk (~400 kB saving)
 const StrategyCube = lazy(() => import('./sections/StrategyCube'));
@@ -65,6 +66,7 @@ function App() {
   if (currentView === 'dashboard' && isAuthenticated) {
     return (
       <main className="relative w-full min-h-screen bg-[#050508]">
+        <Analytics />
         <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-md border-b border-gray-800">
           <div className="flex items-center justify-between px-6 py-4">
             <button 
@@ -94,6 +96,7 @@ function App() {
   if (currentView === 'login') {
     return (
       <main className="relative w-full min-h-screen bg-[#050508]">
+        <Analytics />
         <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-md border-b border-gray-800">
           <div className="flex items-center justify-between px-6 py-4">
             <button 
@@ -114,6 +117,7 @@ function App() {
   // Landing page
   return (
     <main className="relative w-full min-h-screen bg-void-black overflow-x-hidden">
+      <Analytics />
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-void-black/80 backdrop-blur-md border-b border-gray-800/50">
         <div className="flex items-center justify-between px-6 py-4">

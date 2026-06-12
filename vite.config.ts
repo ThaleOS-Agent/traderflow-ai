@@ -24,4 +24,16 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react':  ['react', 'react-dom'],
+          'vendor-three':  ['three', '@react-three/fiber', '@react-three/drei'],
+          'vendor-charts': ['lightweight-charts', 'recharts', 'd3'],
+        },
+      },
+    },
+  },
 });

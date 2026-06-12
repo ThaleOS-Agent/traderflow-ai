@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "postinstall": "cd backend && npm install",
+    "setup": "npm install",
     "build:backend": "cd backend && npm install",
     "build:all": "npm run build && npm run build:backend",
     "start": "NODE_ENV=production node backend/src/server.js",

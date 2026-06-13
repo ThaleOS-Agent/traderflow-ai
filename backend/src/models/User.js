@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { encrypt, decrypt } from '../utils/encryption.js';
 
 const exchangeSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -109,13 +110,35 @@ const userSchema = new mongoose.Schema({
 
 // Hash password before saving
 userSchema.pre('save', async function(next) {
-  if (!this.isModified('password')) return next();
-  this.password = await bcrypt.hash(this.password, 10);
+  if (this.isModified('password') && this.password) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
+
+  // Encrypt exchange API keys at rest whenever the exchanges array is touched
+  if (this.isModified('exchanges')) {
+    for (const ex of this.exchanges) {
+      if (ex.apiKey)    ex.apiKey    = encrypt(ex.apiKey);
+      if (ex.apiSecret) ex.apiSecret = encrypt(ex.apiSecret);
+    }
+  }
+
   next();
 });
 
 userSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+/**
+ * Returns the exchanges array with API keys decrypted.
+ * Always use this when passing credentials to exchange connectors.
+ */
+userSchema.methods.getDecryptedExchanges = function() {
+  return this.exchanges.map(ex => ({
+    ...ex.toObject(),
+    apiKey:    decrypt(ex.apiKey),
+    apiSecret: decrypt(ex.apiSecret),
+  }));
 };
 
 userSchema.methods.toJSON = function() {

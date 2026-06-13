@@ -33,7 +33,7 @@ const Hero = () => {
     const interval = setInterval(() => {
       setDisplayText(() => {
         return TARGET_TEXT.split('')
-          .map((_, index) => {
+          .map((_: string, index: number) => {
             if (index < iteration / 8) {
               return TARGET_TEXT[index];
             }

@@ -5,6 +5,7 @@
     "buildEnvironment": "V3"
   },
   "deploy": {
+    "startCommand": "npm start",
     "runtime": "V2",
     "numReplicas": 1,
     "sleepApplication": false,

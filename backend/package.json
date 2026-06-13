@@ -28,5 +28,9 @@
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.0.1"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "node-cron@4.2.1": true
   }
 }

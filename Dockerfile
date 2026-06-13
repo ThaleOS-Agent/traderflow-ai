@@ -4,7 +4,7 @@ FROM node:20-alpine AS frontend-builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm install --no-audit --no-fund --ignore-scripts
 
 COPY index.html tsconfig*.json vite.config.ts tailwind.config.js postcss.config.js components.json ./
 COPY src ./src
@@ -19,7 +19,7 @@ WORKDIR /app
 
 # Install backend dependencies
 COPY backend/package*.json ./backend/
-RUN cd backend && npm ci --omit=dev --ignore-scripts
+RUN cd backend && npm install --no-audit --no-fund --omit=dev --ignore-scripts
 
 # Copy backend source
 COPY backend ./backend

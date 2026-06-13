@@ -189,7 +189,7 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
-    tradingEngine: tradingEngine.isRunning() ? 'running' : 'stopped',
+    tradingEngine: tradingEngine.isRunning ? 'running' : 'stopped',
     patternScanner: patternScanner.isRunning ? 'running' : 'stopped',
     assetScanner: assetScanner.isRunning ? 'running' : 'stopped',
     autoExecution: autoExecution.isRunning ? 'running' : 'stopped',
@@ -207,7 +207,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Serve frontend static files in production
-const frontendDist = join(__dirname, '../../../dist');
+const frontendDist = join(__dirname, '../../dist');
 if (process.env.NODE_ENV === 'production' && existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   // SPA fallback — serve index.html for all non-API routes

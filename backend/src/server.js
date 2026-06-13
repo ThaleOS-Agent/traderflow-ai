@@ -56,7 +56,7 @@ import walletRoutes from './routes/wallet.js';
 import forexRoutes from './routes/forex.js';
 import mt5Routes from './routes/mt5.js';
 
-dotenv.config();
+dotenv.config({ path: join(__dirname, '../../.env') });
 
 const app = express();
 const httpServer = createServer(app);

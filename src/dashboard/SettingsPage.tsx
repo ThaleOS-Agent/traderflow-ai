@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  Settings, Bell, Lock, Zap, AlertCircle, CheckCircle, Toggle2,
+  Settings, Bell, Lock, Zap, AlertCircle, CheckCircle,
   Loader2, Save, ChevronLeft, Database, Key, Eye, EyeOff
 } from 'lucide-react';
 import { api } from './api';
@@ -50,7 +50,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     try {
       setLoading(true);
       const [settingsRes, mt5Res] = await Promise.allSettled([
-        api.api.getTradingSettings?.() || Promise.resolve({}),
+        api.getTradingSettings(),
         api.getMt5Status(),
       ]);
 
@@ -85,7 +85,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
       setError('');
       setSuccess('');
       
-      await api.api.updateTradingSettings?.(settings) || Promise.resolve();
+      await api.updateTradingSettings(settings);
       
       setSuccess('Settings saved successfully');
       setTimeout(() => setSuccess(''), 3000);
@@ -107,7 +107,7 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         return;
       }
 
-      await api.api.addExchangeKeys?.(exchangeKey) || Promise.resolve();
+      await api.addExchangeKeys(exchangeKey);
       
       setSuccess('Exchange connected successfully');
       setExchangeKey({ exchange: 'binance', apiKey: '', apiSecret: '', isTestnet: true });

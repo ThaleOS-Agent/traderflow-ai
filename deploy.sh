@@ -45,7 +45,7 @@ fi
 # ── Step 1: Install frontend deps & build ──────────────────────────────────
 
 log "Installing frontend dependencies…"
-npm ci --ignore-scripts
+npm install --no-audit --no-fund --ignore-scripts
 ok "Frontend dependencies installed"
 
 log "Building frontend…"
@@ -55,7 +55,7 @@ ok "Frontend built → dist/"
 # ── Step 2: Install backend deps ──────────────────────────────────────────
 
 log "Installing backend dependencies…"
-(cd backend && npm ci --omit=dev --ignore-scripts)
+(cd backend && npm install --no-audit --no-fund --omit=dev --ignore-scripts)
 ok "Backend dependencies installed"
 
 [[ "$MODE" == "build" ]] && { ok "Build complete. Run 'node backend/src/server.js' to start."; exit 0; }

@@ -91,7 +91,12 @@ router.post('/order', async (req, res) => {
 // DELETE /api/mt5/positions/:id  — close a position
 router.delete('/positions/:id', async (req, res) => {
   try {
-    const result = await mt5Connector.closePosition(req.params.id);
+    const positionId = String(req.params.id || '');
+    if (!/^\d+$/.test(positionId)) {
+      return res.status(400).json({ success: false, error: 'Invalid position id' });
+    }
+
+    const result = await mt5Connector.closePosition(positionId);
     res.json({ success: true, result });
   } catch (err) {
     logger.error('MT5 close position error:', err);

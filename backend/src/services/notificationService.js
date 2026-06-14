@@ -94,14 +94,36 @@ export class NotificationService {
    */
   async subscribe(userId, subscription) {
     try {
-      // Validate subscription
-      if (!subscription || !subscription.endpoint) {
+      // Validate and sanitize subscription payload to prevent NoSQL/operator injection
+      if (
+        !subscription ||
+        typeof subscription !== 'object' ||
+        Array.isArray(subscription) ||
+        typeof subscription.endpoint !== 'string' ||
+        !subscription.keys ||
+        typeof subscription.keys !== 'object' ||
+        Array.isArray(subscription.keys) ||
+        typeof subscription.keys.p256dh !== 'string' ||
+        typeof subscription.keys.auth !== 'string'
+      ) {
         throw new Error('Invalid subscription');
       }
+
+      const safeSubscription = {
+        endpoint: subscription.endpoint,
+        expirationTime:
+          subscription.expirationTime === null || typeof subscription.expirationTime === 'number'
+            ? subscription.expirationTime
+            : null,
+        keys: {
+          p256dh: subscription.keys.p256dh,
+          auth: subscription.keys.auth
+        }
+      };
       
       // Store subscription
       this.subscriptions.set(userId, {
-        ...subscription,
+        ...safeSubscription,
         subscribedAt: new Date(),
         lastActive: new Date()
       });
@@ -109,7 +131,7 @@ export class NotificationService {
       // Update user in database
       await User.findByIdAndUpdate(userId, {
         'notifications.pushEnabled': true,
-        'notifications.pushSubscription': subscription
+        'notifications.pushSubscription': safeSubscription
       });
       
       // Send welcome notification

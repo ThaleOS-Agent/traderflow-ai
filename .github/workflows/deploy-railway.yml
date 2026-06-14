@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+ with:
+          node-version: 'v22'
+          cache: 'npm'
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli

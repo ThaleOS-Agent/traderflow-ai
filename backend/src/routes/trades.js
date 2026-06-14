@@ -13,7 +13,13 @@ router.get('/', authenticateToken, async (req, res) => {
     const { status, limit = 50, page = 1 } = req.query;
     
     const query = { userId: req.userId };
-    if (status) query.status = status;
+    const allowedStatuses = new Set(['pending', 'open', 'closed', 'cancelled', 'failed']);
+    if (status !== undefined) {
+      if (typeof status !== 'string' || !allowedStatuses.has(status)) {
+        return res.status(400).json({ error: 'Invalid status filter' });
+      }
+      query.status = status;
+    }
     
     const trades = await Trade.find(query)
       .sort({ openedAt: -1 })

@@ -374,15 +374,31 @@ export class AutoExecutionEngine {
       return this.updateConfig(userId, newConfig);
     }
 
+    const sanitizedConfig = {};
+    if (newConfig && typeof newConfig === 'object' && !Array.isArray(newConfig)) {
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'enabled')) {
+        sanitizedConfig.enabled = Boolean(newConfig.enabled);
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'paperTrading')) {
+        sanitizedConfig.paperTrading = Boolean(newConfig.paperTrading);
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'maxDailyTrades')) {
+        const maxDailyTrades = Number(newConfig.maxDailyTrades);
+        if (Number.isFinite(maxDailyTrades) && maxDailyTrades > 0) {
+          sanitizedConfig.maxDailyTrades = maxDailyTrades;
+        }
+      }
+    }
+
     engine.config = {
       ...engine.config,
-      ...newConfig
+      ...sanitizedConfig
     };
 
     // Update user in database
     await User.findByIdAndUpdate(userId, {
-      'tradingSettings.autoTrading': engine.config.enabled,
-      'tradingSettings.paperTrading': engine.config.paperTrading
+      'tradingSettings.autoTrading': Boolean(engine.config.enabled),
+      'tradingSettings.paperTrading': Boolean(engine.config.paperTrading)
     });
 
     logger.info(`Auto-execution config updated for user ${userId}`);

@@ -7,6 +7,9 @@ on:
       - claude/code-review-deploy-package-wa1o3y
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

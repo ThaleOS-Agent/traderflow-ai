@@ -15,15 +15,19 @@ export const strategies = {
 };
 
 export function getStrategy(name) {
-  return strategies[name] || strategies.xq_trade_m8;
+  const Strategy = strategies[name] || strategies.xq_trade_m8;
+  return new Strategy();
 }
 
 export function getAllStrategies() {
-  return Object.keys(strategies).map(key => ({
-    code: key,
-    name: strategies[key].name,
-    description: strategies[key].description,
-    type: strategies[key].type,
-    supportedAssets: strategies[key].supportedAssets
-  }));
+  return Object.keys(strategies).map(key => {
+    const strategy = new strategies[key]();
+    return {
+      code: key,
+      name: strategy.name,
+      description: strategy.description,
+      type: strategy.type,
+      supportedAssets: strategy.supportedAssets
+    };
+  });
 }

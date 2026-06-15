@@ -1,6 +1,10 @@
 import { logger } from '../utils/logger.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { Web3 } from 'web3';
+
+const web3 = new Web3();
 
 /**
  * WalletConnect Service
@@ -85,9 +89,18 @@ export class WalletConnectService {
    */
   async createSession() {
     const sessionId = crypto.randomUUID();
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const message = [
+      'TradeFlow AI Wallet Login',
+      `Session: ${sessionId}`,
+      `Nonce: ${nonce}`,
+      `Issued At: ${new Date().toISOString()}`
+    ].join('\n');
     const session = {
       id: sessionId,
       status: 'pending',
+      nonce,
+      message,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
       uri: `wc:${sessionId}@2?relay-protocol=irn&symKey=${crypto.randomBytes(32).toString('hex')}`
@@ -109,8 +122,15 @@ export class WalletConnectService {
       if (!session) {
         throw new Error('Session not found or expired');
       }
+      if (session.expiresAt < new Date()) {
+        this.activeSessions.delete(sessionId);
+        throw new Error('Session expired');
+      }
       
       const { address, chainId, signature, message } = walletData;
+      if (!message || message !== session.message) {
+        throw new Error('Invalid session message');
+      }
       
       // Verify signature
       const isValid = await this.verifySignature(address, message, signature);
@@ -184,12 +204,9 @@ export class WalletConnectService {
    */
   async verifySignature(address, message, signature) {
     try {
-      // In production, use ethers.js or web3.js to verify
-      // For now, simulate verification
-      const expectedMessage = `TradeFlow AI Login\nNonce: ${Date.now()}\nTimestamp: ${new Date().toISOString()}`;
-      
-      // Simple check - in production use proper EIP-191/EIP-712 verification
-      return signature && signature.length === 132 && signature.startsWith('0x');
+      if (!address || !message || !signature) return false;
+      const recovered = web3.eth.accounts.recover(message, signature);
+      return recovered.toLowerCase() === address.toLowerCase();
     } catch (error) {
       logger.error('Signature verification error:', error.message);
       return false;
@@ -200,18 +217,16 @@ export class WalletConnectService {
    * Generate JWT token
    */
   generateToken(user) {
-    const payload = {
-      userId: user._id.toString(),
-      walletAddress: user.walletAddress,
-      tier: user.subscription.tier,
-      isFounder: user.isFounder || false,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
-    };
-    
-    // In production, use proper JWT signing
-    const token = Buffer.from(JSON.stringify(payload)).toString('base64');
-    return token;
+    return jwt.sign(
+      {
+        userId: user._id.toString(),
+        walletAddress: user.walletAddress,
+        tier: user.subscription?.tier || 'free',
+        isFounder: user.isFounder || false
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
   }
 
   /**

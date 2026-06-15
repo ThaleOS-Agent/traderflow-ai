@@ -3,7 +3,7 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Crown, Star, CreditCard,
+  Crown, Star, CreditCard, ShieldCheck, Power,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
@@ -49,6 +49,18 @@ interface Signal {
   stopLoss: number;
   takeProfit: number;
   createdAt: string;
+}
+
+interface TradingSettings {
+  autoTrading: boolean;
+  paperTrading: boolean;
+  defaultStrategy: string;
+  riskLevel: string;
+  maxDailyLoss: number;
+  maxPositionSize: number;
+  stopLossPercent: number;
+  takeProfitPercent: number;
+  leverage: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -117,6 +129,8 @@ export function Dashboard() {
   const [subscription, setSubscription] = useState<{
     tier: string; status: string; isFounder: boolean; features: string[];
   } | null>(null);
+  const [tradingSettings, setTradingSettings] = useState<TradingSettings | null>(null);
+  const [settingsSaving, setSettingsSaving] = useState(false);
 
   // Keep stable refs so WebSocket callbacks don't go stale
   const tradesRef = useRef(trades);
@@ -162,11 +176,12 @@ export function Dashboard() {
     else setRefreshing(true);
     setError('');
     try {
-      const [portfolioRes, tradesRes, signalsRes, subRes] = await Promise.allSettled([
+      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes] = await Promise.allSettled([
         api.getPortfolio(),
         api.getTrades({ limit: 10 }),
         api.getSignals(),
         api.getSubscription(),
+        api.getTradingSettings(),
       ]);
 
       if (portfolioRes.status === 'fulfilled') {
@@ -183,6 +198,9 @@ export function Dashboard() {
       }
       if (subRes.status === 'fulfilled') {
         setSubscription(subRes.value.subscription);
+      }
+      if (settingsRes.status === 'fulfilled') {
+        setTradingSettings(settingsRes.value.settings);
       }
     } catch {
       setError('Failed to load dashboard data. Check your connection.');
@@ -236,6 +254,62 @@ export function Dashboard() {
   const netPositive = netPnL >= 0;
   const tier = subscription?.tier ?? 'free';
   const isFounder = subscription?.isFounder ?? false;
+  const paperTrading = tradingSettings?.paperTrading !== false;
+  const autoTrading = tradingSettings?.autoTrading === true;
+
+  const switchTradingMode = async (nextPaperTrading: boolean) => {
+    if (settingsSaving || nextPaperTrading === paperTrading) return;
+    setSettingsSaving(true);
+    setError('');
+    try {
+      const res = await api.togglePaperTrading(nextPaperTrading);
+      setTradingSettings(prev => ({
+        ...(prev ?? {
+          autoTrading: false,
+          paperTrading: true,
+          defaultStrategy: 'quantum_ai',
+          riskLevel: 'medium',
+          maxDailyLoss: 100,
+          maxPositionSize: 1000,
+          stopLossPercent: 2,
+          takeProfitPercent: 4,
+          leverage: 1,
+        }),
+        paperTrading: res.paperTrading,
+      }));
+    } catch (err) {
+      setError((err as Error).message || 'Failed to update trading mode.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const toggleAutoTrading = async () => {
+    if (settingsSaving) return;
+    setSettingsSaving(true);
+    setError('');
+    try {
+      const res = await api.toggleAutoTrading(!autoTrading);
+      setTradingSettings(prev => ({
+        ...(prev ?? {
+          autoTrading: false,
+          paperTrading: true,
+          defaultStrategy: 'quantum_ai',
+          riskLevel: 'medium',
+          maxDailyLoss: 100,
+          maxPositionSize: 1000,
+          stopLossPercent: 2,
+          takeProfitPercent: 4,
+          leverage: 1,
+        }),
+        autoTrading: res.autoTrading,
+      }));
+    } catch (err) {
+      setError((err as Error).message || 'Failed to update auto-trading.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#050508] text-white px-6 py-8">
@@ -334,6 +408,62 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: wallet + MT5 + subscription card */}
         <div className="lg:col-span-1 flex flex-col gap-4">
+          {/* Trading mode controls */}
+          <div className={`border rounded-xl p-5 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${paperTrading ? 'bg-yellow-500/20' : 'bg-green-500/20'}`}>
+                  <ShieldCheck className={`w-4 h-4 ${paperTrading ? 'text-yellow-400' : 'text-green-400'}`} />
+                </div>
+                <div>
+                  <p className="text-white text-sm font-semibold">Trading Mode</p>
+                  <p className="text-gray-500 text-xs">{paperTrading ? 'Paper funds only' : 'Live execution enabled'}</p>
+                </div>
+              </div>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${paperTrading ? 'bg-yellow-500/15 text-yellow-300' : 'bg-green-500/15 text-green-300'}`}>
+                {paperTrading ? 'Paper' : 'Live'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 mb-4">
+              <button
+                type="button"
+                onClick={() => switchTradingMode(true)}
+                disabled={settingsSaving}
+                className={`py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${paperTrading ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+              >
+                Paper
+              </button>
+              <button
+                type="button"
+                onClick={() => switchTradingMode(false)}
+                disabled={settingsSaving}
+                className={`py-2 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 ${!paperTrading ? 'bg-green-500/20 border-green-500/30 text-green-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+              >
+                Live
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleAutoTrading}
+              disabled={settingsSaving}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border transition-colors disabled:opacity-50 ${autoTrading ? 'bg-cyan-500/15 border-cyan-500/30 text-cyan-200' : 'bg-white/5 border-white/10 text-gray-400 hover:text-white'}`}
+            >
+              <span className="flex items-center gap-2 text-sm font-medium">
+                <Power className="w-4 h-4" />
+                Auto-trading
+              </span>
+              <span className="text-xs">{autoTrading ? 'On' : 'Off'}</span>
+            </button>
+
+            {!paperTrading && (
+              <p className="mt-3 text-xs text-green-300/80">
+                Live mode uses configured exchange or MT5 credentials. Keep paper mode on until real keys are verified.
+              </p>
+            )}
+          </div>
+
           {/* Wallet */}
           <WalletConnect />
 
@@ -471,9 +601,11 @@ export function Dashboard() {
       </div>
 
       {/* Paper trading notice */}
-      <div className="mt-6 flex items-center gap-2 text-xs text-yellow-500/70 bg-yellow-500/5 border border-yellow-500/10 rounded-xl px-4 py-3">
+      <div className={`mt-6 flex items-center gap-2 text-xs border rounded-xl px-4 py-3 ${paperTrading ? 'text-yellow-500/70 bg-yellow-500/5 border-yellow-500/10' : 'text-green-400/80 bg-green-500/5 border-green-500/10'}`}>
         <AlertCircle className="w-4 h-4 flex-shrink-0" />
-        Paper trading mode is active by default. All trades use simulated funds. Enable live trading in Settings.
+        {paperTrading
+          ? 'Paper trading is active. All trades use simulated funds.'
+          : 'Live trading is active. Orders can use configured live exchange or MT5 credentials.'}
       </div>
     </div>
   );

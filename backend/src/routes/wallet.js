@@ -19,6 +19,7 @@ router.post('/connect', async (req, res) => {
       session: {
         id: session.id,
         uri: session.uri,
+        message: session.message,
         expiresAt: session.expiresAt
       }
     });

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Wallet, ExternalLink, Copy, CheckCircle, AlertCircle, Loader2, Unplug } from 'lucide-react';
+import { api } from './api';
 
 interface WalletState {
   address: string;
@@ -7,6 +8,8 @@ interface WalletState {
   chainId: number;
   chainName: string;
   symbol: string;
+  sessionId?: string;
+  verified: boolean;
 }
 
 const CHAIN_META: Record<number, { name: string; symbol: string }> = {
@@ -68,7 +71,32 @@ export function WalletConnect() {
       const chainId = parseInt(chainIdHex, 16);
       const meta = CHAIN_META[chainId] ?? { name: `Chain ${chainId}`, symbol: 'ETH' };
       const balance = (await fetchBalance(address)) ?? '0.0000';
-      setWallet({ address, balance, chainId, chainName: meta.name, symbol: meta.symbol });
+      const sessionRes = await api.createWalletSession();
+      const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [sessionRes.session.message, address],
+      }) as string;
+      const verifyRes = await api.verifyWallet({
+        sessionId: sessionRes.session.id,
+        address,
+        chainId,
+        signature,
+        message: sessionRes.session.message,
+      });
+
+      if (!api.isAuthenticated() && verifyRes.token) {
+        api.setAuthToken(verifyRes.token);
+      }
+
+      setWallet({
+        address,
+        balance,
+        chainId,
+        chainName: meta.name,
+        symbol: meta.symbol,
+        sessionId: sessionRes.session.id,
+        verified: verifyRes.success,
+      });
     } catch (err) {
       const e = err as { code?: number; message?: string };
       if (e.code === 4001) setError('Connection rejected.');
@@ -78,7 +106,13 @@ export function WalletConnect() {
     }
   };
 
-  const disconnect = () => setWallet(null);
+  const disconnect = async () => {
+    const sessionId = wallet?.sessionId;
+    setWallet(null);
+    if (sessionId && api.isAuthenticated()) {
+      await api.disconnectWallet(sessionId).catch(() => undefined);
+    }
+  };
 
   const copyAddress = () => {
     if (!wallet) return;
@@ -121,7 +155,7 @@ export function WalletConnect() {
           </div>
           <div>
             <p className="text-white text-sm font-semibold">Wallet</p>
-            <p className="text-gray-500 text-xs">Connect to see on-chain balance</p>
+            <p className="text-gray-500 text-xs">Connect and verify with backend</p>
           </div>
         </div>
 
@@ -137,7 +171,7 @@ export function WalletConnect() {
           className="w-full flex items-center justify-center gap-2 py-2.5 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
-          {loading ? 'Connecting…' : 'Connect MetaMask'}
+          {loading ? 'Verifying…' : 'Connect MetaMask'}
         </button>
       </div>
     );
@@ -164,6 +198,11 @@ export function WalletConnect() {
         <p className="text-2xl font-bold text-white">
           {wallet.balance} <span className="text-lg text-gray-400">{wallet.symbol}</span>
         </p>
+        {wallet.verified && (
+          <p className="mt-1 flex items-center gap-1 text-xs text-green-400">
+            <CheckCircle className="w-3 h-3" /> Backend wallet session verified
+          </p>
+        )}
       </div>
 
       {/* Address */}

@@ -25,6 +25,10 @@ export const api = {
     return Boolean(localStorage.getItem(TOKEN_KEY));
   },
 
+  setAuthToken(token: string): void {
+    localStorage.setItem(TOKEN_KEY, token);
+  },
+
   logout(): void {
     localStorage.removeItem(TOKEN_KEY);
   },
@@ -81,6 +85,36 @@ export const api = {
     return request<Record<string, unknown>>('/user/portfolio');
   },
 
+  async getTradingSettings() {
+    return request<{
+      settings: {
+        autoTrading: boolean;
+        paperTrading: boolean;
+        defaultStrategy: string;
+        riskLevel: string;
+        maxDailyLoss: number;
+        maxPositionSize: number;
+        stopLossPercent: number;
+        takeProfitPercent: number;
+        leverage: number;
+      };
+    }>('/user/trading-settings');
+  },
+
+  async toggleAutoTrading(enabled: boolean) {
+    return request<{ success: boolean; autoTrading: boolean; message: string }>('/user/toggle-auto-trading', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
+  async togglePaperTrading(enabled: boolean) {
+    return request<{ success: boolean; paperTrading: boolean; message: string }>('/user/toggle-paper-trading', {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
+  },
+
   async getSubscription() {
     return request<{
       success: boolean;
@@ -96,6 +130,43 @@ export const api = {
 
   async getTiers() {
     return request<Record<string, unknown>>('/wallet/tiers');
+  },
+
+  async createWalletSession() {
+    return request<{
+      success: boolean;
+      session: {
+        id: string;
+        uri: string;
+        message: string;
+        expiresAt: string;
+      };
+    }>('/wallet/connect', { method: 'POST' });
+  },
+
+  async verifyWallet(payload: {
+    sessionId: string;
+    address: string;
+    chainId: number;
+    signature: string;
+    message: string;
+  }) {
+    return request<{
+      success: boolean;
+      token: string;
+      user: Record<string, unknown>;
+      session: Record<string, unknown>;
+    }>('/wallet/verify', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async disconnectWallet(sessionId: string) {
+    return request<{ success: boolean; message: string }>('/wallet/disconnect', {
+      method: 'POST',
+      body: JSON.stringify({ sessionId }),
+    });
   },
 
   async getMt5Status() {

@@ -4,8 +4,19 @@ import { User } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
+import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
+import { metatraderAccountService } from '../services/metatraderAccountService.js';
 
 const router = express.Router();
+
+function activeExchange(user) {
+  const exchanges = user.getDecryptedExchanges?.() || [];
+  return exchanges.find(exchange => exchange.isActive) || exchanges[0] || null;
+}
+
+function brokerAsset(assetType) {
+  return assetType === 'forex' || assetType === 'commodity';
+}
 
 // Get all trades
 router.get('/', authenticateToken, async (req, res) => {
@@ -33,6 +44,61 @@ router.get('/', authenticateToken, async (req, res) => {
   } catch (error) {
     logger.error('Get trades error:', error);
     res.status(500).json({ error: 'Failed to get trades' });
+  }
+});
+
+// Get trade statistics
+router.get('/stats/overview', authenticateToken, async (req, res) => {
+  try {
+    const { timeframe = '30d' } = req.query;
+
+    const startDate = new Date();
+    if (timeframe === '7d') startDate.setDate(startDate.getDate() - 7);
+    else if (timeframe === '30d') startDate.setDate(startDate.getDate() - 30);
+    else if (timeframe === '90d') startDate.setDate(startDate.getDate() - 90);
+    else if (timeframe === '1y') startDate.setFullYear(startDate.getFullYear() - 1);
+
+    const stats = await Trade.aggregate([
+      {
+        $match: {
+          userId: req.userId,
+          openedAt: { $gte: startDate }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalTrades: { $sum: 1 },
+          winningTrades: { $sum: { $cond: [{ $gt: ['$profit', 0] }, 1, 0] } },
+          losingTrades: { $sum: { $cond: [{ $lt: ['$profit', 0] }, 1, 0] } },
+          totalProfit: { $sum: { $cond: [{ $gt: ['$profit', 0] }, '$profit', 0] } },
+          totalLoss: { $sum: { $cond: [{ $lt: ['$profit', 0] }, '$profit', 0] } },
+          netProfit: { $sum: '$profit' },
+          avgProfit: { $avg: { $cond: [{ $gt: ['$profit', 0] }, '$profit', null] } },
+          avgLoss: { $avg: { $cond: [{ $lt: ['$profit', 0] }, '$profit', null] } }
+        }
+      }
+    ]);
+
+    const result = stats[0] || {
+      totalTrades: 0,
+      winningTrades: 0,
+      losingTrades: 0,
+      totalProfit: 0,
+      totalLoss: 0,
+      netProfit: 0,
+      avgProfit: 0,
+      avgLoss: 0
+    };
+
+    result.winRate = result.totalTrades > 0
+      ? (result.winningTrades / result.totalTrades * 100).toFixed(2)
+      : 0;
+
+    res.json({ stats: result });
+  } catch (error) {
+    logger.error('Get trade stats error:', error);
+    res.status(500).json({ error: 'Failed to get trade statistics' });
   }
 });
 
@@ -71,6 +137,43 @@ router.post('/', authenticateToken, async (req, res) => {
     } = req.body;
     
     const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const paperTrade = isPaperTrade !== false || user.tradingSettings?.paperTrading !== false;
+    let execution = null;
+
+    if (!paperTrade) {
+      if (brokerAsset(assetType)) {
+        if (!(user.metatraderAccounts || []).length) {
+          return res.status(400).json({ error: 'Live forex/commodity execution requires a saved MT4/MT5 connection' });
+        }
+        execution = await metatraderAccountService.placeOrder(user, req.body.metatraderAccountId, {
+          symbol,
+          side: side.toUpperCase(),
+          volume: quantity,
+          stopLoss,
+          takeProfit,
+          comment: 'TradeFlow manual trade'
+        });
+      } else {
+        const exchange = activeExchange(user);
+        if (!exchange) {
+          return res.status(400).json({ error: 'Live crypto/stock execution requires a saved exchange connection' });
+        }
+
+        const connector = new MultiExchangeConnector(exchange.name, exchange.isTestnet);
+        connector.setCredentials(exchange.apiKey, exchange.apiSecret, exchange.passphrase);
+        execution = await connector.createOrder({
+          symbol,
+          side,
+          type: orderType,
+          quantity,
+          price: orderType === 'market' ? undefined : entryPrice
+        });
+      }
+    }
     
     // Create trade
     const trade = new Trade({
@@ -82,20 +185,22 @@ router.post('/', authenticateToken, async (req, res) => {
       quantity,
       stopLoss,
       takeProfit,
-      status: 'pending',
+      status: paperTrade || execution ? 'open' : 'pending',
       orderType,
+      exchange: brokerAsset(assetType) ? 'metatrader' : activeExchange(user)?.name || 'paper',
+      exchangeOrderId: execution?.orderId || execution?.orderId?.toString?.() || execution?.id || execution?.orderFillTransaction?.id || null,
       isAutoTrade: false,
-      isPaperTrade: isPaperTrade !== false || user.tradingSettings?.paperTrading !== false,
-      strategy: 'manual'
+      isPaperTrade: paperTrade,
+      strategy: 'manual',
+      metadata: {
+        execution
+      }
     });
     
     await trade.save();
     
-    // Execute trade through exchange connector
-    // (Implementation would go here)
-    
     res.status(201).json({
-      message: 'Trade created',
+      message: paperTrade ? 'Paper trade created' : 'Live trade executed',
       trade
     });
   } catch (error) {

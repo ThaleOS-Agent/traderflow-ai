@@ -23,6 +23,29 @@ function isTestnet(exchange) {
   return exchange !== 'kraken' && exchange !== 'bitfinex';
 }
 
+function sanitizeExchange(exchange) {
+  const obj = exchange.toObject ? exchange.toObject() : exchange;
+  return {
+    id: obj._id?.toString(),
+    name: obj.name,
+    isTestnet: obj.isTestnet,
+    isActive: obj.isActive,
+    hasApiKey: Boolean(obj.apiKey),
+    hasApiSecret: Boolean(obj.apiSecret),
+    hasPassphrase: Boolean(obj.passphrase),
+    createdAt: obj.createdAt,
+    updatedAt: obj.updatedAt
+  };
+}
+
+function getActiveExchange(user, requestedExchange) {
+  const exchanges = user.getDecryptedExchanges?.() || [];
+  if (requestedExchange) {
+    return exchanges.find(ex => ex._id.toString() === requestedExchange || ex.name === requestedExchange);
+  }
+  return exchanges.find(ex => ex.isActive) || exchanges[0] || null;
+}
+
 // Get ticker for a symbol
 router.get('/ticker/:symbol', async (req, res) => {
   try {
@@ -100,37 +123,148 @@ router.get('/klines/:symbol', async (req, res) => {
 // Get account balance (requires API key)
 router.get('/balance', authenticate, async (req, res) => {
   try {
-    // This would require user's API key
-    // For now, return mock data
-    res.json({
-      balances: [
-        { asset: 'USDT', free: 10000, locked: 0 },
-        { asset: 'BTC', free: 0.5, locked: 0 },
-        { asset: 'ETH', free: 5, locked: 0 }
-      ]
-    });
+    const saved = getActiveExchange(req.user, req.query.exchange);
+    if (!saved) {
+      return res.status(400).json({ success: false, error: 'No exchange connection configured' });
+    }
+
+    const connector = new MultiExchangeConnector(saved.name, saved.isTestnet);
+    connector.setCredentials(saved.apiKey, saved.apiSecret, saved.passphrase);
+    const balances = await connector.getAccount();
+
+    res.json({ success: true, exchange: saved.name, balances });
   } catch (error) {
     logger.error('Get balance error:', error);
     res.status(500).json({ error: 'Failed to get balance' });
   }
 });
 
+// List saved exchange connections
+router.get('/connections', authenticate, async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      connections: (req.user.exchanges || []).map(sanitizeExchange)
+    });
+  } catch (error) {
+    logger.error('List exchange connections error:', error);
+    res.status(500).json({ success: false, error: 'Failed to list exchange connections' });
+  }
+});
+
+// Save an exchange connection
+router.post('/connections', authenticate, async (req, res) => {
+  try {
+    const {
+      name = 'binance',
+      apiKey = '',
+      apiSecret = '',
+      passphrase = '',
+      isTestnet = true,
+      isActive = true,
+      testConnection = false
+    } = req.body;
+
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ success: false, error: 'Exchange name is required' });
+    }
+    if (isActive) {
+      req.user.exchanges.forEach(exchange => { exchange.isActive = false; });
+    }
+
+    req.user.exchanges.push({
+      name: name.toLowerCase(),
+      apiKey,
+      apiSecret,
+      passphrase,
+      isTestnet,
+      isActive
+    });
+    const exchange = req.user.exchanges[req.user.exchanges.length - 1];
+
+    let testResult = null;
+    if (testConnection) {
+      const connector = new MultiExchangeConnector(name.toLowerCase(), isTestnet);
+      connector.setCredentials(apiKey, apiSecret, passphrase);
+      testResult = await connector.getAccount();
+    }
+
+    await req.user.save();
+
+    res.status(201).json({
+      success: true,
+      connection: sanitizeExchange(exchange),
+      testResult
+    });
+  } catch (error) {
+    logger.error('Save exchange connection error:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+// Activate a saved exchange connection
+router.post('/connections/:id/activate', authenticate, async (req, res) => {
+  try {
+    const exchange = req.user.exchanges.id(req.params.id);
+    if (!exchange) {
+      return res.status(404).json({ success: false, error: 'Exchange connection not found' });
+    }
+
+    req.user.exchanges.forEach(item => { item.isActive = item._id.toString() === req.params.id; });
+    await req.user.save();
+
+    res.json({ success: true, connection: sanitizeExchange(exchange) });
+  } catch (error) {
+    logger.error('Activate exchange connection error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Delete a saved exchange connection
+router.delete('/connections/:id', authenticate, async (req, res) => {
+  try {
+    const exchange = req.user.exchanges.id(req.params.id);
+    if (!exchange) {
+      return res.status(404).json({ success: false, error: 'Exchange connection not found' });
+    }
+
+    req.user.exchanges.pull(req.params.id);
+    await req.user.save();
+
+    res.json({ success: true, message: 'Exchange connection removed' });
+  } catch (error) {
+    logger.error('Delete exchange connection error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Test connection with API keys
 router.post('/test-connection', authenticate, async (req, res) => {
   try {
-    const { apiKey, apiSecret, isTestnet } = req.body;
+    const { exchange = 'binance', apiKey, apiSecret, passphrase = '', isTestnet } = req.body;
     
-    const connector = new ExchangeConnector('binance', isTestnet);
-    connector.setCredentials(apiKey, apiSecret);
+    if (exchange === 'binance') {
+      const connector = new ExchangeConnector('binance', isTestnet);
+      connector.setCredentials(apiKey, apiSecret);
     
-    // Test by getting account info
+      const account = await connector.getAccount();
+      return res.json({
+        success: true,
+        message: 'Connection successful',
+        accountType: account.accountType,
+        canTrade: account.canTrade
+      });
+    }
+
+    const connector = new MultiExchangeConnector(exchange, isTestnet);
+    connector.setCredentials(apiKey, apiSecret, passphrase);
     const account = await connector.getAccount();
     
     res.json({
       success: true,
       message: 'Connection successful',
-      accountType: account.accountType,
-      canTrade: account.canTrade
+      exchange,
+      account
     });
   } catch (error) {
     logger.error('Test connection error:', error);

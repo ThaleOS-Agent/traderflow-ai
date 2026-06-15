@@ -11,6 +11,7 @@ backend/dist/
 # Environment variables — NEVER commit these
 .env
 .env.local
+.env.localops
 .env.production
 .env.*.local
 

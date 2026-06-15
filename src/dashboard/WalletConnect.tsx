@@ -76,15 +76,19 @@ export function WalletConnect() {
         method: 'personal_sign',
         params: [sessionRes.session.message, address],
       }) as string;
-      const verifyRes = await api.verifyWallet({
+      const payload = {
         sessionId: sessionRes.session.id,
         address,
         chainId,
         signature,
         message: sessionRes.session.message,
-      });
+      };
+      const wasAuthenticated = api.isAuthenticated();
+      const verifyRes = wasAuthenticated
+        ? await api.linkWallet(payload)
+        : await api.verifyWallet(payload);
 
-      if (!api.isAuthenticated() && verifyRes.token) {
+      if (!wasAuthenticated && 'token' in verifyRes && verifyRes.token) {
         api.setAuthToken(verifyRes.token);
       }
 
@@ -155,7 +159,7 @@ export function WalletConnect() {
           </div>
           <div>
             <p className="text-white text-sm font-semibold">Wallet</p>
-            <p className="text-gray-500 text-xs">Connect and verify with backend</p>
+            <p className="text-gray-500 text-xs">Connect or link to this account</p>
           </div>
         </div>
 
@@ -200,7 +204,7 @@ export function WalletConnect() {
         </p>
         {wallet.verified && (
           <p className="mt-1 flex items-center gap-1 text-xs text-green-400">
-            <CheckCircle className="w-3 h-3" /> Backend wallet session verified
+            <CheckCircle className="w-3 h-3" /> Wallet linked and verified
           </p>
         )}
       </div>

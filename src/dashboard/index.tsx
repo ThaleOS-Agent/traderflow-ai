@@ -11,6 +11,7 @@ import { WalletConnect } from './WalletConnect';
 import { SubscriptionPage } from './SubscriptionPage';
 import { TradingViewChart } from './TradingViewChart';
 import { MT5Panel } from './MT5Panel';
+import { ExchangeConnections } from './ExchangeConnections';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -644,6 +645,9 @@ export function Dashboard() {
 
           {/* Wallet */}
           <WalletConnect />
+
+          {/* Exchange Connections */}
+          <ExchangeConnections />
 
           {/* MT5 Panel */}
           <MT5Panel />

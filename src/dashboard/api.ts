@@ -234,6 +234,24 @@ export const api = {
     });
   },
 
+  async linkWallet(payload: {
+    sessionId: string;
+    address: string;
+    chainId: number;
+    signature: string;
+    message: string;
+  }) {
+    return request<{
+      success: boolean;
+      linked: boolean;
+      user: Record<string, unknown>;
+      session: Record<string, unknown>;
+    }>('/wallet/link', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async disconnectWallet(sessionId: string) {
     return request<{ success: boolean; message: string }>('/wallet/disconnect', {
       method: 'POST',
@@ -255,6 +273,65 @@ export const api = {
 
   async getMt5Orders() {
     return request<{ success: boolean; orders: Record<string, unknown>[] }>('/mt5/orders');
+  },
+
+  async getMt5Connections() {
+    return request<{ success: boolean; connections: Record<string, unknown>[] }>('/mt5/connections');
+  },
+
+  async saveMt5Connection(payload: Record<string, unknown>) {
+    return request<{ success: boolean; connection: Record<string, unknown> }>('/mt5/connections', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async testMt5Connection(id: string) {
+    return request<{ success: boolean; connection: Record<string, unknown>; account: Record<string, unknown> }>(`/mt5/connections/${id}/test`, {
+      method: 'POST',
+    });
+  },
+
+  async activateMt5Connection(id: string) {
+    return request<{ success: boolean; connection: Record<string, unknown> }>(`/mt5/connections/${id}/activate`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteMt5Connection(id: string) {
+    return request<{ success: boolean; message: string }>(`/mt5/connections/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getExchangeConnections() {
+    return request<{ success: boolean; connections: Record<string, unknown>[] }>('/exchange/connections');
+  },
+
+  async saveExchangeConnection(payload: Record<string, unknown>) {
+    return request<{ success: boolean; connection: Record<string, unknown> }>('/exchange/connections', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async testExchangeConnection(payload: Record<string, unknown>) {
+    return request<{ success: boolean; message: string; account?: Record<string, unknown> }>('/exchange/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async activateExchangeConnection(id: string) {
+    return request<{ success: boolean; connection: Record<string, unknown> }>(`/exchange/connections/${id}/activate`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteExchangeConnection(id: string) {
+    return request<{ success: boolean; message: string }>(`/exchange/connections/${id}`, {
+      method: 'DELETE',
+    });
   },
 
   async getKlines(symbol: string, interval = '1h', exchange?: string) {

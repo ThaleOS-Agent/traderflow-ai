@@ -59,7 +59,7 @@ export const api = {
   },
 
   async getDashboard() {
-    return request<Record<string, unknown>>('/dashboard');
+    return request<Record<string, unknown>>('/dashboard/overview');
   },
 
   async getTrades(params?: { page?: number; limit?: number }) {

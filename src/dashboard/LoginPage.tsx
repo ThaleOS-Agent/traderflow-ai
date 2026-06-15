@@ -3,7 +3,7 @@ import { TrendingUp, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { api } from './api';
 
 interface LoginPageProps {
-  onLogin: () => void;
+  onLogin: (user?: Record<string, unknown>) => void;
 }
 
 type Mode = 'login' | 'register';
@@ -32,9 +32,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await api.login(form.email, form.password);
+        const data = await api.login(form.email, form.password);
+        onLogin(data.user);
       } else {
-        await api.register({
+        const data = await api.register({
           email: form.email,
           password: form.password,
           firstName: form.firstName,
@@ -42,8 +43,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           phone: form.phone,
           country: form.country,
         });
+        onLogin(data.user);
       }
-      onLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {

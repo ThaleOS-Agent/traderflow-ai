@@ -6,7 +6,7 @@ This app is a full-stack service: Vite builds the frontend, and the Express back
 
 Use Railway with the included `Dockerfile` and `railway.json`.
 
-Required Railway variables:
+Required Railway service variables:
 
 ```text
 MONGODB_URI=<mongodb atlas or railway mongodb connection string>
@@ -55,28 +55,25 @@ Required GitHub repository secret:
 RAILWAY_TOKEN=<Railway account or project token>
 ```
 
-Optional GitHub repository variable:
+Required GitHub repository variable:
+
+```text
+RAILWAY_PROJECT_ID=<Railway project id>
+```
+
+Optional GitHub repository variables:
 
 ```text
 RAILWAY_SERVICE_NAME=traderflow-ai
+RAILWAY_ENVIRONMENT=production
 ```
 
-## Vercel
+## Production Domain
 
-Vercel is fine for the static Vite frontend only:
-
-```text
-Build command: npm run build
-Output directory: dist
-```
-
-For a split deployment, set the frontend variable:
-
-```text
-VITE_API_URL=https://<your-backend-domain>/api
-```
-
-The backend should still run on Railway, Render, Fly.io, a VPS, or another long-running Node host because it uses Express, WebSockets, scheduled scanners, and persistent trading services.
+Use Cloudflare DNS to point the production hostname to the Railway service domain.
+The app is deployed as one Railway Docker service so the frontend, `/api/*`,
+`/ws`, scheduled scanners, and persistent trading services stay on the same
+long-running Node host.
 
 ## Local checks
 

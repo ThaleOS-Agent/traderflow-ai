@@ -74,7 +74,9 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
 
       - name: Deploy Docker service to Railway
-        run: railway up --detach --service "${RAILWAY_SERVICE_NAME:-traderflow-ai}"
+        run: railway up --detach --project "$RAILWAY_PROJECT_ID" --service "${RAILWAY_SERVICE_NAME:-traderflow-ai}" --environment "${RAILWAY_ENVIRONMENT:-production}"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
+          RAILWAY_ENVIRONMENT: ${{ vars.RAILWAY_ENVIRONMENT }}

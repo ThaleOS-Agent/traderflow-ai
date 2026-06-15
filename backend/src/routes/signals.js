@@ -12,9 +12,17 @@ router.get('/', async (req, res) => {
     const { status, symbol, strategy, limit = 50, page = 1 } = req.query;
     
     const query = {};
-    if (status) query.status = status;
-    if (symbol) query.symbol = symbol.toUpperCase();
-    if (strategy) query.strategy = strategy;
+    const allowedStatuses = new Set(['active', 'expired', 'executed', 'cancelled']);
+
+    if (typeof status === 'string' && allowedStatuses.has(status)) {
+      query.status = { $eq: status };
+    }
+    if (typeof symbol === 'string' && symbol.trim() !== '') {
+      query.symbol = { $eq: symbol.toUpperCase() };
+    }
+    if (typeof strategy === 'string' && strategy.trim() !== '') {
+      query.strategy = { $eq: strategy };
+    }
     
     const signals = await Signal.find(query)
       .sort({ createdAt: -1 })

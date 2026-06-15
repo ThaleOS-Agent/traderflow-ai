@@ -4,6 +4,7 @@ import { Trade } from '../models/Trade.js';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
+import { recalculatePortfolio } from '../utils/portfolio.js';
 
 const router = express.Router();
 
@@ -115,6 +116,7 @@ router.post('/toggle-paper-trading', authenticateToken, async (req, res) => {
 router.get('/portfolio', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.userId);
+    const portfolio = await recalculatePortfolio(req.userId);
     
     // Get open positions
     const openPositions = await Trade.find({
@@ -129,7 +131,7 @@ router.get('/portfolio', authenticateToken, async (req, res) => {
     }).sort({ closedAt: -1 }).limit(10);
     
     res.json({
-      portfolio: user.portfolio,
+      portfolio: portfolio || user.portfolio,
       openPositions,
       recentTrades
     });

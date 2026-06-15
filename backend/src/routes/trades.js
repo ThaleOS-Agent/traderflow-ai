@@ -6,6 +6,7 @@ import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { metatraderAccountService } from '../services/metatraderAccountService.js';
+import { recalculatePortfolio, toObjectId } from '../utils/portfolio.js';
 
 const router = express.Router();
 
@@ -61,7 +62,7 @@ router.get('/stats/overview', authenticateToken, async (req, res) => {
     const stats = await Trade.aggregate([
       {
         $match: {
-          userId: req.userId,
+          userId: toObjectId(req.userId),
           openedAt: { $gte: startDate }
         }
       },
@@ -93,6 +94,10 @@ router.get('/stats/overview', authenticateToken, async (req, res) => {
 
     result.winRate = result.totalTrades > 0
       ? (result.winningTrades / result.totalTrades * 100).toFixed(2)
+      : 0;
+
+    result.profitFactor = Math.abs(result.totalLoss) > 0
+      ? (result.totalProfit / Math.abs(result.totalLoss)).toFixed(2)
       : 0;
 
     res.json({ stats: result });
@@ -198,15 +203,21 @@ router.post('/', authenticateToken, async (req, res) => {
     });
     
     await trade.save();
+    const portfolio = await recalculatePortfolio(req.userId);
 
     tradingEngine.broadcast('tradeExecuted', {
       userId: req.userId,
       trade: trade.toJSON(),
       isPaperTrade: paperTrade
     });
+    tradingEngine.broadcast('orderExecuted', {
+      userId: req.userId,
+      order: trade.toJSON(),
+      isPaperTrade: paperTrade
+    });
     tradingEngine.broadcast('portfolio_update', {
       userId: req.userId,
-      portfolio: user.portfolio
+      portfolio
     });
     
     res.status(201).json({
@@ -275,10 +286,10 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
     // Close trade
     await tradingEngine.closeTrade(trade, exitPrice, 'manual_close');
 
-    const updatedUser = await User.findById(req.userId);
+    const portfolio = await recalculatePortfolio(req.userId);
     tradingEngine.broadcast('portfolio_update', {
       userId: req.userId,
-      portfolio: updatedUser?.portfolio
+      portfolio
     });
     
     res.json({
@@ -306,6 +317,16 @@ router.post('/:id/cancel', authenticateToken, async (req, res) => {
     
     trade.status = 'cancelled';
     await trade.save();
+    const portfolio = await recalculatePortfolio(req.userId);
+
+    tradingEngine.broadcast('orderClosed', {
+      userId: req.userId,
+      order: trade.toJSON()
+    });
+    tradingEngine.broadcast('portfolio_update', {
+      userId: req.userId,
+      portfolio
+    });
     
     res.json({
       message: 'Trade cancelled',
@@ -331,7 +352,7 @@ router.get('/stats/overview', authenticateToken, async (req, res) => {
     const stats = await Trade.aggregate([
       {
         $match: {
-          userId: req.userId,
+          userId: toObjectId(req.userId),
           openedAt: { $gte: startDate }
         }
       },

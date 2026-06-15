@@ -373,15 +373,30 @@ export function Dashboard() {
     }
   }, []);
 
+  const handleTradeUpdate = useCallback((trade: LiveTrade) => {
+    handleTrade(trade);
+    refreshLiveData().catch(() => {/* non-critical live refresh */});
+  }, [handleTrade, refreshLiveData]);
+
+  const handleOrderUpdate = useCallback((order: LiveTrade | Record<string, unknown>) => {
+    handleOrder(order);
+    refreshLiveData().catch(() => {/* non-critical live refresh */});
+  }, [handleOrder, refreshLiveData]);
+
+  const handlePortfolioUpdate = useCallback((data: unknown) => {
+    appendLiveEvent('portfolio_update', data);
+    const payload = getRecord(data);
+    const nextPortfolio = getRecord(payload.portfolio) as unknown as PortfolioStats;
+    if (payload.portfolio) setPortfolio(nextPortfolio);
+    refreshLiveData().catch(() => {/* non-critical */});
+  }, [appendLiveEvent, refreshLiveData]);
+
   const { status: wsStatus, lastEvent: lastWsEvent } = useTradeWebSocket({
     onSignal: handleSignal,
-    onTrade: handleTrade,
-    onOrder: handleOrder,
+    onTrade: handleTradeUpdate,
+    onOrder: handleOrderUpdate,
     onMarketData: handleMarketData,
-    onPortfolioUpdate: useCallback(() => {
-      appendLiveEvent('portfolio_update', {});
-      refreshLiveData().catch(() => {/* non-critical */});
-    }, [appendLiveEvent, refreshLiveData]),
+    onPortfolioUpdate: handlePortfolioUpdate,
     onEvent: useCallback((event: LiveWsEvent) => {
       if (['connected', 'authenticated', 'subscribed', 'error'].includes(event.event)) {
         appendLiveEvent(event.event, event.data, event.timestamp);

@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { Signal } from '../models/Signal.js';
 import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { RiskManager } from './riskManager.js';
+import { recalculatePortfolio } from '../utils/portfolio.js';
 
 /**
  * Auto-Execution Engine
@@ -257,6 +258,7 @@ export class AutoExecutionEngine {
       });
 
       await trade.save();
+      const portfolio = await recalculatePortfolio(userId);
 
       // Save signal record
       const signal = new Signal({
@@ -296,6 +298,16 @@ export class AutoExecutionEngine {
         trade: trade.toJSON(),
         opportunity,
         isPaperTrade
+      });
+      this.broadcast('orderExecuted', {
+        userId,
+        order: trade.toJSON(),
+        opportunity,
+        isPaperTrade
+      });
+      this.broadcast('portfolio_update', {
+        userId,
+        portfolio
       });
 
       this.executionHistory.push({
@@ -429,6 +441,8 @@ export class AutoExecutionEngine {
   broadcast(event, data) {
     if (this.wss) {
       this.wss.clients.forEach(client => {
+        const userId = data?.userId?.toString?.() || data?.userId;
+        if (userId && client.userId !== userId) return;
         if (client.readyState === 1) {
           client.send(JSON.stringify({ 
             event, 

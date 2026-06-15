@@ -8,6 +8,7 @@ import { getStrategy } from './strategies/index.js';
 import { ExchangeConnector } from './exchangeConnector.js';
 import { RiskManager } from './riskManager.js';
 import { featureEngineering } from './featureEngineering.js';
+import { recalculatePortfolio } from '../utils/portfolio.js';
 
 export class TradingEngine {
   constructor(wss) {
@@ -340,6 +341,7 @@ export class TradingEngine {
       });
 
       await trade.save();
+      const portfolio = await recalculatePortfolio(userId);
 
       // Update signal with auto-trade info
       await Signal.findByIdAndUpdate(signal._id, {
@@ -366,6 +368,15 @@ export class TradingEngine {
         userId,
         trade: trade.toJSON(),
         isPaperTrade
+      });
+      this.broadcast('orderExecuted', {
+        userId,
+        order: trade.toJSON(),
+        isPaperTrade
+      });
+      this.broadcast('portfolio_update', {
+        userId,
+        portfolio
       });
 
       logger.info(`Auto-trade executed for user ${userId}: ${signal.symbol} ${signal.side}`);
@@ -472,6 +483,7 @@ export class TradingEngine {
 
       // Broadcast trade closure
       this.broadcast('tradeClosed', {
+        userId: trade.userId?.toString?.() || trade.userId,
         trade: trade.toJSON(),
         reason
       });
@@ -566,6 +578,8 @@ export class TradingEngine {
   broadcast(event, data) {
     if (this.wss) {
       this.wss.clients.forEach(client => {
+        const userId = data?.userId?.toString?.() || data?.userId;
+        if (userId && client.userId !== userId) return;
         if (client.readyState === 1) {
           client.send(JSON.stringify({ event, data, timestamp: Date.now() }));
         }

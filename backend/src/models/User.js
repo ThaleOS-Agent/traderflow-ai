@@ -6,8 +6,29 @@ const exchangeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   apiKey: { type: String, default: '' },
   apiSecret: { type: String, default: '' },
+  passphrase: { type: String, default: '' },
   isTestnet: { type: Boolean, default: true },
-  isActive: { type: Boolean, default: false }
+  isActive: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+const metatraderAccountSchema = new mongoose.Schema({
+  platform: { type: String, enum: ['mt4', 'mt5'], default: 'mt5' },
+  provider: { type: String, enum: ['bridge', 'metaapi'], default: 'bridge' },
+  label: { type: String, default: '' },
+  login: { type: String, default: '' },
+  server: { type: String, default: '' },
+  accountId: { type: String, default: '' },
+  apiUrl: { type: String, default: '' },
+  apiKey: { type: String, default: '' },
+  token: { type: String, default: '' },
+  isDemo: { type: Boolean, default: true },
+  isActive: { type: Boolean, default: false },
+  connectionStatus: { type: String, enum: ['untested', 'connected', 'failed'], default: 'untested' },
+  lastConnectedAt: { type: Date, default: null },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
 });
 
 const tradingSettingsSchema = new mongoose.Schema({
@@ -83,6 +104,7 @@ const userSchema = new mongoose.Schema({
   
   // Trading
   exchanges: [exchangeSchema],
+  metatraderAccounts: [metatraderAccountSchema],
   tradingSettings: tradingSettingsSchema,
   portfolio: portfolioSchema,
   
@@ -119,6 +141,16 @@ userSchema.pre('save', async function(next) {
     for (const ex of this.exchanges) {
       if (ex.apiKey)    ex.apiKey    = encrypt(ex.apiKey);
       if (ex.apiSecret) ex.apiSecret = encrypt(ex.apiSecret);
+      if (ex.passphrase) ex.passphrase = encrypt(ex.passphrase);
+      ex.updatedAt = new Date();
+    }
+  }
+
+  if (this.isModified('metatraderAccounts')) {
+    for (const account of this.metatraderAccounts) {
+      if (account.apiKey) account.apiKey = encrypt(account.apiKey);
+      if (account.token) account.token = encrypt(account.token);
+      account.updatedAt = new Date();
     }
   }
 
@@ -138,6 +170,15 @@ userSchema.methods.getDecryptedExchanges = function() {
     ...ex.toObject(),
     apiKey:    decrypt(ex.apiKey),
     apiSecret: decrypt(ex.apiSecret),
+    passphrase: decrypt(ex.passphrase),
+  }));
+};
+
+userSchema.methods.getDecryptedMetatraderAccounts = function() {
+  return this.metatraderAccounts.map(account => ({
+    ...account.toObject(),
+    apiKey: decrypt(account.apiKey),
+    token: decrypt(account.token),
   }));
 };
 
@@ -145,6 +186,7 @@ userSchema.methods.toJSON = function() {
   const obj = this.toObject();
   delete obj.password;
   delete obj.exchanges;
+  delete obj.metatraderAccounts;
   return obj;
 };
 

@@ -4,6 +4,12 @@ import { User } from '../models/User.js';
 import { Signal } from '../models/Signal.js';
 import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { RiskManager } from './riskManager.js';
+import { recalculatePortfolio } from '../utils/portfolio.js';
+import {
+  SUPPORTED_TRADING_VENUES,
+  normalizeStrategyName,
+  normalizeTradingVenue
+} from '../config/tradingVenues.js';
 
 /**
  * Auto-Execution Engine
@@ -25,8 +31,8 @@ export class AutoExecutionEngine {
       maxDailyTrades: 10,
       maxConcurrentPositions: 5,
       positionSizePercent: 10, // % of available balance per trade
-      strategies: ['xq_trade_m8', 'harmonic', 'breakout', 'volume_spike'],
-      exchanges: ['binance'],
+      strategies: ['xq_trade_m8', 'quantum_ai', 'crypto_bot', 'harmonic', 'breakout', 'volume_spike'],
+      exchanges: [...SUPPORTED_TRADING_VENUES],
       autoClose: true, // Auto close on target/SL
       trailingStop: false
     };
@@ -44,11 +50,13 @@ export class AutoExecutionEngine {
       }
 
       // Get user trading settings
+      const userDefaultStrategy = normalizeStrategyName(user.tradingSettings?.defaultStrategy || 'xq_trade_m8');
       const config = {
         ...this.defaultConfig,
         enabled: user.tradingSettings?.autoTrading || false,
         paperTrading: user.tradingSettings?.paperTrading !== false,
-        strategies: [user.tradingSettings?.defaultStrategy || 'xq_trade_m8'],
+        strategies: Array.from(new Set([userDefaultStrategy, ...this.defaultConfig.strategies])),
+        exchanges: [...SUPPORTED_TRADING_VENUES],
         riskLevel: user.tradingSettings?.riskLevel || 'medium'
       };
 
@@ -58,20 +66,21 @@ export class AutoExecutionEngine {
       for (const exchangeConfig of user.getDecryptedExchanges()) {
         if (!exchangeConfig.isActive) continue;
 
+        const exchangeName = normalizeTradingVenue(exchangeConfig.name);
         const connector = new MultiExchangeConnector(
-          exchangeConfig.name,
+          exchangeName,
           exchangeConfig.isTestnet
         );
 
-        if (exchangeConfig.apiKey && exchangeConfig.apiSecret) {
+        if (exchangeConfig.apiKey) {
           connector.setCredentials(
             exchangeConfig.apiKey,
-            exchangeConfig.apiSecret,
+            exchangeConfig.apiSecret || '',
             exchangeConfig.passphrase
           );
         }
 
-        exchanges.set(exchangeConfig.name, connector);
+        exchanges.set(exchangeName, connector);
       }
 
       // Setup risk manager
@@ -156,16 +165,22 @@ export class AutoExecutionEngine {
     }
 
     // Check if strategy is allowed
-    if (!config.strategies.includes(opportunity.strategy?.toLowerCase().replace(' ', '_'))) {
+    const strategyName = normalizeStrategyName(opportunity.strategy);
+    if (!config.strategies.includes(strategyName) && !config.strategies.includes('all')) {
       return;
     }
 
-    // Get exchange connector
-    const exchangeName = opportunity.exchange || 'binance';
+    const exchangeName = normalizeTradingVenue(opportunity.exchange);
+    if (!config.exchanges.includes(exchangeName)) {
+      logger.warn(`Exchange ${exchangeName} is not enabled for user ${userId}`);
+      return;
+    }
+
     const connector = exchanges.get(exchangeName);
+    const isPaperTrade = config.paperTrading;
     
-    if (!connector) {
-      logger.warn(`Exchange ${exchangeName} not configured for user ${userId}`);
+    if (!isPaperTrade && (!connector || !connector.apiKey)) {
+      logger.warn(`Live exchange ${exchangeName} not configured for user ${userId}`);
       return;
     }
 
@@ -213,8 +228,6 @@ export class AutoExecutionEngine {
     }
 
     // Execute the trade
-    const isPaperTrade = config.paperTrading;
-    
     let orderResult;
     try {
       if (isPaperTrade) {
@@ -224,7 +237,8 @@ export class AutoExecutionEngine {
           quantity: positionSize,
           entryPrice: opportunity.entryPrice,
           stopLoss: opportunity.stopLoss,
-          takeProfit: opportunity.takeProfit
+          takeProfit: opportunity.takeProfit,
+          exchange: exchangeName
         });
       } else {
         orderResult = await connector.createOrder({
@@ -250,13 +264,14 @@ export class AutoExecutionEngine {
         status: 'open',
         exchangeOrderId: orderResult.orderId,
         exchange: exchangeName,
-        strategy: opportunity.strategy?.toLowerCase().replace(' ', '_') || 'auto',
+        strategy: strategyName,
         isAutoTrade: true,
         isPaperTrade,
         notes: `Auto-executed: ${opportunity.analysis || ''}`
       });
 
       await trade.save();
+      const portfolio = await recalculatePortfolio(userId);
 
       // Save signal record
       const signal = new Signal({
@@ -269,7 +284,7 @@ export class AutoExecutionEngine {
         takeProfit: opportunity.takeProfit,
         confidence: opportunity.confidence,
         confidenceScore: opportunity.confidenceScore,
-        strategy: opportunity.strategy?.toLowerCase().replace(' ', '_') || 'auto',
+        strategy: strategyName,
         analysis: opportunity.analysis,
         status: 'executed',
         executedAt: new Date(),
@@ -297,12 +312,23 @@ export class AutoExecutionEngine {
         opportunity,
         isPaperTrade
       });
+      this.broadcast('orderExecuted', {
+        userId,
+        order: trade.toJSON(),
+        opportunity,
+        isPaperTrade
+      });
+      this.broadcast('portfolio_update', {
+        userId,
+        portfolio
+      });
 
       this.executionHistory.push({
         userId,
         tradeId: trade._id,
         symbol: opportunity.symbol,
         side: opportunity.side,
+        exchange: exchangeName,
         timestamp: new Date(),
         isPaperTrade
       });
@@ -340,7 +366,7 @@ export class AutoExecutionEngine {
    * Simulate order for paper trading
    */
   async simulateOrder(orderParams) {
-    const { symbol, side, quantity, entryPrice, stopLoss, takeProfit } = orderParams;
+    const { symbol, side, quantity, entryPrice, stopLoss, takeProfit, exchange } = orderParams;
     
     // Simulate slippage
     const slippage = (Math.random() * 0.002 - 0.001); // ±0.1%
@@ -354,6 +380,7 @@ export class AutoExecutionEngine {
       orderId,
       symbol,
       side,
+      exchange,
       quantity,
       price: executedPrice,
       status: 'FILLED',
@@ -387,6 +414,18 @@ export class AutoExecutionEngine {
         if (Number.isFinite(maxDailyTrades) && maxDailyTrades > 0) {
           sanitizedConfig.maxDailyTrades = maxDailyTrades;
         }
+      }
+      if (Array.isArray(newConfig.exchanges)) {
+        sanitizedConfig.exchanges = Array.from(new Set(
+          newConfig.exchanges
+            .map(normalizeTradingVenue)
+            .filter(exchange => SUPPORTED_TRADING_VENUES.includes(exchange))
+        ));
+      }
+      if (Array.isArray(newConfig.strategies)) {
+        sanitizedConfig.strategies = Array.from(new Set(
+          newConfig.strategies.map(normalizeStrategyName)
+        ));
       }
     }
 
@@ -425,6 +464,8 @@ export class AutoExecutionEngine {
     return {
       enabled: engine.config.enabled,
       paperTrading: engine.config.paperTrading,
+      supportedExchanges: [...SUPPORTED_TRADING_VENUES],
+      enabledExchanges: engine.config.exchanges,
       todayTrades: engine.todayTrades,
       maxDailyTrades: engine.config.maxDailyTrades,
       totalExecutions: userExecutions.length,
@@ -445,6 +486,8 @@ export class AutoExecutionEngine {
   broadcast(event, data) {
     if (this.wss) {
       this.wss.clients.forEach(client => {
+        const userId = data?.userId?.toString?.() || data?.userId;
+        if (userId && client.userId !== userId) return;
         if (client.readyState === 1) {
           client.send(JSON.stringify({ 
             event, 

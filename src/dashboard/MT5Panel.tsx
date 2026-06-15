@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, TrendingDown, RefreshCw, Circle, AlertCircle } from 'lucide-react';
+import { TrendingUp, TrendingDown, RefreshCw, Circle, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import { api } from './api';
 
 interface MT5Account {
@@ -29,6 +29,33 @@ interface MT5Position {
   _mock?: boolean;
 }
 
+interface MTConnection {
+  id: string;
+  platform: 'mt4' | 'mt5';
+  provider: 'bridge' | 'metaapi';
+  label: string;
+  login?: string;
+  server?: string;
+  accountId?: string;
+  apiUrl?: string;
+  isDemo: boolean;
+  isActive: boolean;
+  connectionStatus: 'untested' | 'connected' | 'failed';
+}
+
+const emptyForm = {
+  platform: 'mt5',
+  provider: 'bridge',
+  label: '',
+  login: '',
+  server: '',
+  accountId: '',
+  apiUrl: '',
+  apiKey: '',
+  token: '',
+  isDemo: true,
+};
+
 function fmt(n: number, d = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
 }
@@ -37,16 +64,21 @@ export function MT5Panel() {
   const [account, setAccount] = useState<MT5Account | null>(null);
   const [positions, setPositions] = useState<MT5Position[]>([]);
   const [mode, setMode] = useState<string>('');
+  const [connections, setConnections] = useState<MTConnection[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<Record<string, string | boolean>>(emptyForm);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const [statusRes, posRes] = await Promise.allSettled([
+      const [statusRes, posRes, connectionRes] = await Promise.allSettled([
         api.getMt5Status(),
         api.getMt5Positions(),
+        api.getMt5Connections(),
       ]);
 
       if (statusRes.status === 'fulfilled') {
@@ -55,6 +87,9 @@ export function MT5Panel() {
       }
       if (posRes.status === 'fulfilled') {
         setPositions(posRes.value.positions as unknown as MT5Position[]);
+      }
+      if (connectionRes.status === 'fulfilled') {
+        setConnections(connectionRes.value.connections as unknown as MTConnection[]);
       }
     } catch {
       setError('Failed to load MT5 data');
@@ -66,6 +101,31 @@ export function MT5Panel() {
   useEffect(() => { load(); }, [load]);
 
   const totalProfit = positions.reduce((sum, p) => sum + (p.profit ?? 0), 0);
+
+  const saveConnection = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.saveMt5Connection({ ...form, isActive: true, testConnection: true });
+      setForm(emptyForm);
+      setShowForm(false);
+      await load();
+    } catch (err) {
+      setError((err as Error).message || 'Failed to save MT connection');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const activateConnection = async (id: string) => {
+    await api.activateMt5Connection(id);
+    await load();
+  };
+
+  const deleteConnection = async (id: string) => {
+    await api.deleteMt5Connection(id);
+    await load();
+  };
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-5">
@@ -96,6 +156,116 @@ export function MT5Panel() {
           <AlertCircle className="w-3 h-3 flex-shrink-0" /> {error}
         </p>
       )}
+
+      <div className="mb-4 space-y-2">
+        {connections.map(connection => (
+          <div key={connection.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+            <div>
+              <p className="text-white text-xs font-semibold">
+                {connection.label || connection.platform.toUpperCase()} {connection.isActive && <span className="text-green-400">Active</span>}
+              </p>
+              <p className="text-gray-500 text-xs">
+                {connection.platform.toUpperCase()} · {connection.provider} · {connection.connectionStatus}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!connection.isActive && (
+                <button onClick={() => activateConnection(connection.id)} className="text-xs text-blue-300 hover:text-blue-200">
+                  Use
+                </button>
+              )}
+              <button onClick={() => deleteConnection(connection.id)} className="text-gray-500 hover:text-red-400">
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <button
+          onClick={() => setShowForm(v => !v)}
+          className="w-full flex items-center justify-center gap-2 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-300"
+        >
+          <Plus className="w-3.5 h-3.5" /> {showForm ? 'Hide MT4/MT5 connection form' : 'Add MT4/MT5 connection'}
+        </button>
+
+        {showForm && (
+          <div className="grid grid-cols-2 gap-2 bg-black/20 border border-white/10 rounded-lg p-3">
+            <select
+              value={String(form.platform)}
+              onChange={e => setForm(f => ({ ...f, platform: e.target.value }))}
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white"
+            >
+              <option value="mt5">MT5</option>
+              <option value="mt4">MT4</option>
+            </select>
+            <select
+              value={String(form.provider)}
+              onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white"
+            >
+              <option value="bridge">REST bridge</option>
+              <option value="metaapi">MetaAPI</option>
+            </select>
+            <input
+              value={String(form.label)}
+              onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+              placeholder="Label"
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+            />
+            <input
+              value={String(form.login)}
+              onChange={e => setForm(f => ({ ...f, login: e.target.value }))}
+              placeholder="Login"
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+            />
+            <input
+              value={String(form.server)}
+              onChange={e => setForm(f => ({ ...f, server: e.target.value }))}
+              placeholder="Server"
+              className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+            />
+            {form.provider === 'metaapi' ? (
+              <input
+                value={String(form.accountId)}
+                onChange={e => setForm(f => ({ ...f, accountId: e.target.value }))}
+                placeholder="MetaAPI account ID"
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+              />
+            ) : (
+              <input
+                value={String(form.apiUrl)}
+                onChange={e => setForm(f => ({ ...f, apiUrl: e.target.value }))}
+                placeholder="Bridge API URL"
+                className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+              />
+            )}
+            {form.provider === 'metaapi' ? (
+              <input
+                type="password"
+                value={String(form.token)}
+                onChange={e => setForm(f => ({ ...f, token: e.target.value }))}
+                placeholder="MetaAPI token"
+                className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+              />
+            ) : (
+              <input
+                type="password"
+                value={String(form.apiKey)}
+                onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
+                placeholder="Bridge API key"
+                className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
+              />
+            )}
+            <button
+              onClick={saveConnection}
+              disabled={saving}
+              className="col-span-2 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 rounded-lg text-xs text-blue-200 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save and test connection'}
+            </button>
+          </div>
+        )}
+      </div>
 
       {account && (
         <>

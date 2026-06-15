@@ -1,0 +1,23 @@
+export const SUPPORTED_TRADING_VENUES = Object.freeze([
+  'binance',
+  'coinbase',
+  'kraken',
+  'kucoin',
+  'bybit',
+  'ftx',
+  'gemini',
+  'bitfinex',
+  'interactive_brokers',
+  'oanda'
+]);
+
+export const normalizeTradingVenue = (venue) => {
+  if (!venue) return 'binance';
+
+  const normalized = venue.toString().trim().toLowerCase();
+  return SUPPORTED_TRADING_VENUES.includes(normalized) ? normalized : 'binance';
+};
+
+export const normalizeStrategyName = (strategy) => (
+  strategy?.toString().trim().toLowerCase().replace(/\s+/g, '_') || 'auto'
+);

@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 backend/node_modules/
+ai-text-demo/node_modules/
 
 # Build output
 dist/
@@ -33,3 +34,8 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# Local/generated workspace artifacts
+actions-runner/
+my-app@0.0.0
+tsc

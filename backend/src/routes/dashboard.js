@@ -5,6 +5,8 @@ import { User } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
+import { getLiveMarketFeed, getMarketFeedSymbols } from '../services/marketFeedService.js';
+import { mlPredictor } from '../services/mlPredictor.js';
 
 const router = express.Router();
 
@@ -81,6 +83,125 @@ router.get('/market-data', async (req, res) => {
   } catch (error) {
     logger.error('Get market data error:', error);
     res.status(500).json({ error: 'Failed to get market data' });
+  }
+});
+
+// Get normalized cross-asset live market feed
+router.get('/live-feed', async (req, res) => {
+  try {
+    const { category = 'all' } = req.query;
+    const marketData = await getLiveMarketFeed(String(category));
+
+    res.json({
+      success: true,
+      symbols: getMarketFeedSymbols(),
+      marketData,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error('Get live feed error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get live market feed' });
+  }
+});
+
+// Get strategy performance/results for dashboard cards
+router.get('/strategy-results', authenticateToken, async (req, res) => {
+  try {
+    const trades = await Trade.find({ userId: req.userId }).sort({ openedAt: -1 }).limit(500);
+    const signals = await Signal.find({}).sort({ createdAt: -1 }).limit(500);
+    const strategyMap = new Map();
+
+    const ensure = (name) => {
+      const key = name || 'unknown';
+      if (!strategyMap.has(key)) {
+        strategyMap.set(key, {
+          strategy: key,
+          totalTrades: 0,
+          winningTrades: 0,
+          losingTrades: 0,
+          openTrades: 0,
+          pnl: 0,
+          avgProfitPercent: 0,
+          activeSignals: 0,
+          avgConfidence: 0,
+          latestSignal: null,
+        });
+      }
+      return strategyMap.get(key);
+    };
+
+    for (const trade of trades) {
+      const row = ensure(trade.strategy);
+      row.totalTrades += 1;
+      row.pnl += Number(trade.profit || 0);
+      row.avgProfitPercent += Number(trade.profitPercent || 0);
+      if (trade.status === 'open' || trade.status === 'pending') row.openTrades += 1;
+      if (Number(trade.profit || 0) > 0) row.winningTrades += 1;
+      if (Number(trade.profit || 0) < 0) row.losingTrades += 1;
+    }
+
+    for (const signal of signals) {
+      const row = ensure(signal.strategy);
+      if (signal.status === 'active') row.activeSignals += 1;
+      row.avgConfidence += Number(signal.confidenceScore || 0);
+      if (!row.latestSignal || new Date(signal.createdAt) > new Date(row.latestSignal.createdAt)) {
+        row.latestSignal = {
+          symbol: signal.symbol,
+          side: signal.side,
+          confidenceScore: signal.confidenceScore,
+          analysis: signal.analysis,
+          createdAt: signal.createdAt,
+        };
+      }
+    }
+
+    const signalCounts = signals.reduce((acc, signal) => {
+      acc[signal.strategy] = (acc[signal.strategy] || 0) + 1;
+      return acc;
+    }, {});
+
+    const results = Array.from(strategyMap.values()).map((row) => {
+      const closedTrades = row.winningTrades + row.losingTrades;
+      const signalCount = signalCounts[row.strategy] || 0;
+      return {
+        ...row,
+        winRate: closedTrades ? (row.winningTrades / closedTrades) * 100 : 0,
+        avgProfitPercent: row.totalTrades ? row.avgProfitPercent / row.totalTrades : 0,
+        avgConfidence: signalCount ? row.avgConfidence / signalCount : 0,
+      };
+    }).sort((a, b) => b.activeSignals - a.activeSignals || b.pnl - a.pnl);
+
+    res.json({ success: true, results });
+  } catch (error) {
+    logger.error('Get strategy results error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get strategy results' });
+  }
+});
+
+// Get compact AI/ML learning status for dashboard
+router.get('/ai-learning', authenticateToken, async (req, res) => {
+  try {
+    const performance = mlPredictor.getPerformance();
+    const recentSignals = await Signal.find({}).sort({ createdAt: -1 }).limit(25);
+    const avgConfidence = recentSignals.length
+      ? recentSignals.reduce((sum, signal) => sum + Number(signal.confidenceScore || 0), 0) / recentSignals.length
+      : 0;
+
+    res.json({
+      success: true,
+      performance,
+      learning: {
+        mode: 'online-simulated',
+        recentSignals: recentSignals.length,
+        avgSignalConfidence: avgConfidence,
+        lastTraining: performance.lastTraining,
+        trackedAssetTypes: performance.models?.map((model) => model.assetType) ?? [],
+      },
+      models: performance.models ?? [],
+    });
+  } catch (error) {
+    logger.error('Get AI learning error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get AI learning status' });
   }
 });
 

@@ -3,7 +3,7 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Crown, Star, CreditCard, ShieldCheck, Power,
+  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
@@ -63,6 +63,61 @@ interface TradingSettings {
   leverage: number;
 }
 
+interface MarketFeedItem {
+  symbol: string;
+  label: string;
+  category: 'crypto' | 'forex' | 'metal' | 'oil';
+  provider: string;
+  price: number | null;
+  change24h: number;
+  high24h: number | null;
+  low24h: number | null;
+  volume: number | null;
+  status: 'live' | 'unavailable';
+  updatedAt: string;
+}
+
+interface StrategyResult {
+  strategy: string;
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  openTrades: number;
+  pnl: number;
+  avgProfitPercent: number;
+  activeSignals: number;
+  avgConfidence: number;
+  winRate: number;
+  latestSignal: null | {
+    symbol: string;
+    side: string;
+    confidenceScore: number;
+    analysis: string;
+    createdAt: string;
+  };
+}
+
+interface AiLearning {
+  performance: {
+    predictions: number;
+    correctPredictions: number;
+    accuracy: string | number;
+    lastTraining: string | null;
+  };
+  learning: {
+    mode: string;
+    recentSignals: number;
+    avgSignalConfidence: number;
+    trackedAssetTypes: string[];
+  };
+  models: Array<{
+    assetType: string;
+    priceDirection: number;
+    opportunityScore: number;
+    volatilityForecast: number;
+  }>;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
@@ -71,6 +126,10 @@ function fmt(n: number, decimals = 2) {
 
 function fmtUsd(n: number) {
   return `$${fmt(Math.abs(n))}`;
+}
+
+function strategyLabel(code: string) {
+  return code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function StatCard({
@@ -131,6 +190,9 @@ export function Dashboard() {
   } | null>(null);
   const [tradingSettings, setTradingSettings] = useState<TradingSettings | null>(null);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [marketFeed, setMarketFeed] = useState<MarketFeedItem[]>([]);
+  const [strategyResults, setStrategyResults] = useState<StrategyResult[]>([]);
+  const [aiLearning, setAiLearning] = useState<AiLearning | null>(null);
 
   // Keep stable refs so WebSocket callbacks don't go stale
   const tradesRef = useRef(trades);
@@ -176,12 +238,15 @@ export function Dashboard() {
     else setRefreshing(true);
     setError('');
     try {
-      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes] = await Promise.allSettled([
+      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes, feedRes, strategyRes, aiRes] = await Promise.allSettled([
         api.getPortfolio(),
         api.getTrades({ limit: 10 }),
         api.getSignals(),
         api.getSubscription(),
         api.getTradingSettings(),
+        api.getLiveFeed(),
+        api.getStrategyResults(),
+        api.getAiLearning(),
       ]);
 
       if (portfolioRes.status === 'fulfilled') {
@@ -201,6 +266,19 @@ export function Dashboard() {
       }
       if (settingsRes.status === 'fulfilled') {
         setTradingSettings(settingsRes.value.settings);
+      }
+      if (feedRes.status === 'fulfilled') {
+        setMarketFeed(feedRes.value.marketData);
+      }
+      if (strategyRes.status === 'fulfilled') {
+        setStrategyResults(strategyRes.value.results.slice(0, 4));
+      }
+      if (aiRes.status === 'fulfilled') {
+        setAiLearning({
+          performance: aiRes.value.performance,
+          learning: aiRes.value.learning,
+          models: aiRes.value.models,
+        });
       }
     } catch {
       setError('Failed to load dashboard data. Check your connection.');
@@ -404,6 +482,106 @@ export function Dashboard() {
       <div className="mb-6">
         <TradingViewChart />
       </div>
+
+      {/* Cross-asset market feed + strategy/AI status */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
+        <div className="xl:col-span-2 bg-white/5 border border-white/10 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">Live Market Feed</h2>
+              <p className="text-xs text-gray-600 mt-1">Crypto, forex, metals, and oil normalized into one feed</p>
+            </div>
+            <span className="flex items-center gap-1.5 text-xs text-green-400">
+              <Radio className="w-3.5 h-3.5" /> {marketFeed.filter(item => item.status === 'live').length} live
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {marketFeed.slice(0, 8).map(item => {
+              const positive = item.change24h >= 0;
+              return (
+                <div key={`${item.provider}-${item.symbol}`} className="bg-black/20 border border-white/10 rounded-lg p-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div>
+                      <p className="text-white text-sm font-semibold">{item.label}</p>
+                      <p className="text-gray-600 text-xs uppercase">{item.category} · {item.provider}</p>
+                    </div>
+                    <span className={`w-2 h-2 mt-1 rounded-full ${item.status === 'live' ? 'bg-green-400' : 'bg-red-400'}`} />
+                  </div>
+                  <p className="font-mono-custom text-lg text-white">
+                    {item.price === null ? '—' : item.price.toLocaleString('en-US', { maximumFractionDigits: item.price > 100 ? 2 : 5 })}
+                  </p>
+                  <p className={`text-xs mt-1 ${positive ? 'text-green-400' : 'text-red-400'}`}>
+                    {positive ? '+' : ''}{item.change24h.toFixed(2)}% 24h
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">AI Learning</h2>
+            <Brain className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="bg-black/20 border border-white/10 rounded-lg p-3">
+              <p className="text-gray-500 text-xs">Signals Studied</p>
+              <p className="text-xl font-bold text-white">{aiLearning?.learning.recentSignals ?? 0}</p>
+            </div>
+            <div className="bg-black/20 border border-white/10 rounded-lg p-3">
+              <p className="text-gray-500 text-xs">Avg Confidence</p>
+              <p className="text-xl font-bold text-white">{fmt(aiLearning?.learning.avgSignalConfidence ?? 0, 1)}%</p>
+            </div>
+          </div>
+          <div className="space-y-2">
+            {(aiLearning?.models ?? []).slice(0, 3).map(model => (
+              <div key={model.assetType} className="flex items-center justify-between text-xs">
+                <span className="capitalize text-gray-400">{model.assetType}</span>
+                <span className="text-cyan-300">{fmt(model.opportunityScore * 100, 1)}% ensemble</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {strategyResults.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+          {strategyResults.map(result => (
+            <div key={result.strategy} className="bg-white/5 border border-white/10 rounded-xl p-4">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div>
+                  <p className="text-white text-sm font-semibold">{strategyLabel(result.strategy)}</p>
+                  <p className="text-gray-600 text-xs">{result.activeSignals} active signals</p>
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full ${result.pnl >= 0 ? 'bg-green-500/15 text-green-400' : 'bg-red-500/15 text-red-400'}`}>
+                  {result.pnl >= 0 ? '+' : '-'}{fmtUsd(result.pnl)}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div>
+                  <p className="text-gray-600">Win</p>
+                  <p className="text-white font-semibold">{fmt(result.winRate, 1)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Conf.</p>
+                  <p className="text-white font-semibold">{fmt(result.avgConfidence, 1)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Trades</p>
+                  <p className="text-white font-semibold">{result.totalTrades}</p>
+                </div>
+              </div>
+              {result.latestSignal && (
+                <p className="mt-3 text-xs text-gray-500 truncate">
+                  Latest: {result.latestSignal.symbol} {result.latestSignal.side} · {result.latestSignal.confidenceScore}%
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left column: wallet + MT5 + subscription card */}

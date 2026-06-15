@@ -64,6 +64,39 @@ router.post('/verify', async (req, res) => {
 });
 
 /**
+ * @route POST /api/wallet/link
+ * @desc Link a verified wallet to the current signed-in account
+ * @access Private
+ */
+router.post('/link', authenticate, async (req, res) => {
+  try {
+    const { sessionId, address, chainId, signature, message } = req.body;
+
+    if (!sessionId || !address || !signature || !message) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters'
+      });
+    }
+
+    const result = await walletConnectService.linkWalletToUser(req.user._id, sessionId, {
+      address,
+      chainId,
+      signature,
+      message
+    });
+
+    res.json(result);
+  } catch (error) {
+    const status = error.message.includes('already linked') ? 409 : 400;
+    res.status(status).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * @route GET /api/wallet/session/:sessionId
  * @desc Get session status
  * @access Public

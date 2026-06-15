@@ -66,6 +66,78 @@ export const api = {
     return request<Record<string, unknown>>('/dashboard/overview');
   },
 
+  async getLiveFeed(category = 'all') {
+    return request<{
+      success: boolean;
+      marketData: Array<{
+        symbol: string;
+        label: string;
+        category: 'crypto' | 'forex' | 'metal' | 'oil';
+        provider: string;
+        price: number | null;
+        change24h: number;
+        high24h: number | null;
+        low24h: number | null;
+        volume: number | null;
+        quoteVolume: number | null;
+        status: 'live' | 'unavailable';
+        updatedAt: string;
+        error?: string;
+      }>;
+      updatedAt: string;
+    }>(`/dashboard/live-feed?category=${encodeURIComponent(category)}`);
+  },
+
+  async getStrategyResults() {
+    return request<{
+      success: boolean;
+      results: Array<{
+        strategy: string;
+        totalTrades: number;
+        winningTrades: number;
+        losingTrades: number;
+        openTrades: number;
+        pnl: number;
+        avgProfitPercent: number;
+        activeSignals: number;
+        avgConfidence: number;
+        winRate: number;
+        latestSignal: null | {
+          symbol: string;
+          side: string;
+          confidenceScore: number;
+          analysis: string;
+          createdAt: string;
+        };
+      }>;
+    }>('/dashboard/strategy-results');
+  },
+
+  async getAiLearning() {
+    return request<{
+      success: boolean;
+      performance: {
+        predictions: number;
+        correctPredictions: number;
+        accuracy: string | number;
+        lastTraining: string | null;
+      };
+      learning: {
+        mode: string;
+        recentSignals: number;
+        avgSignalConfidence: number;
+        lastTraining: string | null;
+        trackedAssetTypes: string[];
+      };
+      models: Array<{
+        assetType: string;
+        priceDirection: number;
+        opportunityScore: number;
+        volatilityForecast: number;
+      }>;
+    }>('/dashboard/ai-learning');
+  },
+
   async getTrades(params?: { page?: number; limit?: number }) {
     const query = new URLSearchParams();
     if (params?.page)  query.set('page',  String(params.page));

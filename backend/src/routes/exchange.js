@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { authenticate } from '../middleware/auth.js';
 import { ExchangeConnector } from '../services/exchangeConnector.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
+import { getMarketCandles } from '../services/marketFeedService.js';
 
 const router = express.Router();
 
@@ -59,7 +60,13 @@ router.get('/klines/:symbol', async (req, res) => {
     const exchange = resolveExchange(symbol, exQ);
     const connector = new MultiExchangeConnector(exchange, isTestnet(exchange));
 
-    const raw = await connector.getKlines(symbol, interval, parseInt(limit));
+    let raw;
+    try {
+      raw = await connector.getKlines(symbol, interval, parseInt(limit));
+    } catch (providerError) {
+      if (exchange !== 'oanda') throw providerError;
+      raw = await getMarketCandles(symbol, interval, parseInt(limit));
+    }
 
     // Normalise: multi-exchange getKlines already returns objects; Binance returns arrays
     const klines = raw.map(k => {

@@ -16,9 +16,6 @@ concurrency:
   group: tradeflow-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   ci:
     name: Build and Validate

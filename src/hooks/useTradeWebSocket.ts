@@ -25,13 +25,16 @@ export interface LiveSignal {
 export interface LiveTrade {
   _id: string;
   symbol: string;
-  side: 'BUY' | 'SELL';
+  side: 'buy' | 'sell' | 'BUY' | 'SELL';
   status: string;
   entryPrice: number;
+  exitPrice?: number;
   quantity: number;
+  profit?: number;
   profitLoss?: number;
   strategy: string;
   createdAt: string;
+  openedAt?: string;
 }
 
 interface UseTradeWebSocketOptions {
@@ -99,13 +102,18 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
             break;
 
           case 'signal':
+          case 'newSignal':
             onSignal?.(msg.data as LiveSignal);
             break;
 
           case 'trade':
           case 'trade_update':
-            onTrade?.(msg.data as LiveTrade);
+          case 'tradeExecuted':
+          case 'tradeClosed': {
+            const data = msg.data as LiveTrade | { trade?: LiveTrade };
+            onTrade?.(('trade' in data && data.trade ? data.trade : data) as LiveTrade);
             break;
+          }
 
           case 'portfolio_update':
             onPortfolioUpdate?.(msg.data);

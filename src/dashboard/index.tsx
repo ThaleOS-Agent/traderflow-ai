@@ -3,7 +3,7 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio,
+  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
@@ -30,14 +30,19 @@ interface PortfolioStats {
 interface Trade {
   _id: string;
   symbol: string;
-  side: 'BUY' | 'SELL';
+  side: 'buy' | 'sell' | 'BUY' | 'SELL';
   status: string;
   entryPrice: number;
   exitPrice?: number;
   quantity: number;
+  profit?: number;
   profitLoss?: number;
   strategy: string;
-  createdAt: string;
+  assetType?: string;
+  isPaperTrade?: boolean;
+  exchange?: string;
+  createdAt?: string;
+  openedAt?: string;
 }
 
 interface Signal {
@@ -119,6 +124,19 @@ interface AiLearning {
   }>;
 }
 
+interface TradeStats {
+  totalTrades: number;
+  winningTrades: number;
+  losingTrades: number;
+  totalProfit: number;
+  totalLoss: number;
+  netProfit: number;
+  avgProfit: number;
+  avgLoss: number;
+  winRate: string | number;
+  profitFactor?: string | number;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
@@ -194,6 +212,20 @@ export function Dashboard() {
   const [marketFeed, setMarketFeed] = useState<MarketFeedItem[]>([]);
   const [strategyResults, setStrategyResults] = useState<StrategyResult[]>([]);
   const [aiLearning, setAiLearning] = useState<AiLearning | null>(null);
+  const [tradeStats, setTradeStats] = useState<TradeStats | null>(null);
+  const [orderSaving, setOrderSaving] = useState(false);
+  const [orderError, setOrderError] = useState('');
+  const [orderMessage, setOrderMessage] = useState('');
+  const [orderForm, setOrderForm] = useState({
+    symbol: 'BTCUSDT',
+    assetType: 'crypto' as 'crypto' | 'forex' | 'commodity' | 'stock',
+    side: 'buy' as 'buy' | 'sell',
+    orderType: 'market' as 'market' | 'limit' | 'stop',
+    entryPrice: '65000',
+    quantity: '0.001',
+    stopLoss: '63000',
+    takeProfit: '69000',
+  });
 
   // Keep stable refs so WebSocket callbacks don't go stale
   const tradesRef = useRef(trades);
@@ -222,16 +254,42 @@ export function Dashboard() {
     });
   }, []);
 
+  const refreshLiveData = useCallback(async () => {
+    const [portfolioRes, tradesRes, statsRes, feedRes, strategyRes, aiRes] = await Promise.allSettled([
+      api.getPortfolio(),
+      api.getTrades({ limit: 10 }),
+      api.getTradeStats('30d'),
+      api.getLiveFeed(),
+      api.getStrategyResults(),
+      api.getAiLearning(),
+    ]);
+
+    if (portfolioRes.status === 'fulfilled') {
+      const p = portfolioRes.value as { portfolio?: PortfolioStats };
+      if (p.portfolio) setPortfolio(p.portfolio);
+    }
+    if (tradesRes.status === 'fulfilled') {
+      const t = tradesRes.value as { trades?: Trade[] };
+      setTrades(t.trades ?? []);
+    }
+    if (statsRes.status === 'fulfilled') setTradeStats(statsRes.value.stats);
+    if (feedRes.status === 'fulfilled') setMarketFeed(feedRes.value.marketData);
+    if (strategyRes.status === 'fulfilled') setStrategyResults(strategyRes.value.results.slice(0, 4));
+    if (aiRes.status === 'fulfilled') {
+      setAiLearning({
+        performance: aiRes.value.performance,
+        learning: aiRes.value.learning,
+        models: aiRes.value.models,
+      });
+    }
+  }, []);
+
   const { status: wsStatus } = useTradeWebSocket({
     onSignal: handleSignal,
     onTrade: handleTrade,
     onPortfolioUpdate: useCallback(() => {
-      // Refresh portfolio stats on any server-pushed portfolio event
-      api.getPortfolio().then(res => {
-        const p = res as { portfolio?: PortfolioStats };
-        if (p.portfolio) setPortfolio(p.portfolio);
-      }).catch(() => {/* non-critical */});
-    }, []),
+      refreshLiveData().catch(() => {/* non-critical */});
+    }, [refreshLiveData]),
   });
 
   const load = useCallback(async (silent = false) => {
@@ -239,12 +297,13 @@ export function Dashboard() {
     else setRefreshing(true);
     setError('');
     try {
-      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes, feedRes, strategyRes, aiRes] = await Promise.allSettled([
+      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes, statsRes, feedRes, strategyRes, aiRes] = await Promise.allSettled([
         api.getPortfolio(),
         api.getTrades({ limit: 10 }),
         api.getSignals(),
         api.getSubscription(),
         api.getTradingSettings(),
+        api.getTradeStats('30d'),
         api.getLiveFeed(),
         api.getStrategyResults(),
         api.getAiLearning(),
@@ -268,6 +327,9 @@ export function Dashboard() {
       if (settingsRes.status === 'fulfilled') {
         setTradingSettings(settingsRes.value.settings);
       }
+      if (statsRes.status === 'fulfilled') {
+        setTradeStats(statsRes.value.stats);
+      }
       if (feedRes.status === 'fulfilled') {
         setMarketFeed(feedRes.value.marketData);
       }
@@ -290,6 +352,13 @@ export function Dashboard() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      refreshLiveData().catch(() => {/* non-critical live refresh */});
+    }, 10000);
+    return () => window.clearInterval(interval);
+  }, [refreshLiveData]);
 
   if (loading) {
     return (
@@ -330,7 +399,6 @@ export function Dashboard() {
   }
 
   const netPnL = (portfolio?.totalProfit ?? 0) - (portfolio?.totalLoss ?? 0);
-  const netPositive = netPnL >= 0;
   const tier = subscription?.tier ?? 'free';
   const isFounder = subscription?.isFounder ?? false;
   const paperTrading = tradingSettings?.paperTrading !== false;
@@ -389,6 +457,55 @@ export function Dashboard() {
       setSettingsSaving(false);
     }
   };
+
+  const submitOrder = async () => {
+    if (orderSaving) return;
+    setOrderSaving(true);
+    setOrderError('');
+    setOrderMessage('');
+    try {
+      const payload = {
+        symbol: orderForm.symbol.trim().toUpperCase(),
+        assetType: orderForm.assetType,
+        side: orderForm.side,
+        orderType: orderForm.orderType,
+        entryPrice: Number(orderForm.entryPrice),
+        quantity: Number(orderForm.quantity),
+        stopLoss: Number(orderForm.stopLoss),
+        takeProfit: Number(orderForm.takeProfit),
+        isPaperTrade: paperTrading,
+      };
+
+      if (!payload.symbol || !payload.entryPrice || !payload.quantity || !payload.stopLoss || !payload.takeProfit) {
+        throw new Error('Complete symbol, price, quantity, stop loss, and take profit before submitting.');
+      }
+
+      const res = await api.createTrade(payload);
+      setOrderMessage(res.message);
+      await refreshLiveData();
+    } catch (err) {
+      setOrderError((err as Error).message || 'Order failed.');
+    } finally {
+      setOrderSaving(false);
+    }
+  };
+
+  const closeOpenTrade = async (tradeId: string) => {
+    setOrderError('');
+    setOrderMessage('');
+    try {
+      const res = await api.closeTrade(tradeId);
+      setOrderMessage(res.message);
+      await refreshLiveData();
+    } catch (err) {
+      setOrderError((err as Error).message || 'Failed to close trade.');
+    }
+  };
+
+  const statsWinRate = Number(tradeStats?.winRate ?? portfolio?.winRate ?? 0);
+  const statsNetProfit = Number(tradeStats?.netProfit ?? netPnL);
+  const statsProfitFactor = Number(tradeStats?.profitFactor ?? 0);
+  const activeExchangeName = trades.find(trade => trade.exchange)?.exchange;
 
   return (
     <div className="min-h-screen bg-[#050508] text-white px-6 py-8">
@@ -460,22 +577,22 @@ export function Dashboard() {
         <StatCard
           icon={TrendingUp}
           label="Net P&L"
-          value={`${netPositive ? '+' : '-'}${fmtUsd(netPnL)}`}
-          sub={netPositive ? 'Overall profitable' : 'In drawdown'}
-          positive={netPositive}
+          value={`${statsNetProfit >= 0 ? '+' : '-'}${fmtUsd(statsNetProfit)}`}
+          sub={`${fmt(statsProfitFactor, 2)} profit factor`}
+          positive={statsNetProfit >= 0}
         />
         <StatCard
           icon={Activity}
           label="Win Rate"
-          value={`${fmt(portfolio?.winRate ?? 0, 1)}%`}
-          sub={`${portfolio?.winningTrades ?? 0}W / ${portfolio?.losingTrades ?? 0}L`}
-          positive={(portfolio?.winRate ?? 0) >= 50}
+          value={`${fmt(statsWinRate, 1)}%`}
+          sub={`${tradeStats?.winningTrades ?? portfolio?.winningTrades ?? 0}W / ${tradeStats?.losingTrades ?? portfolio?.losingTrades ?? 0}L`}
+          positive={statsWinRate >= 50}
         />
         <StatCard
           icon={BarChart2}
           label="Total Trades"
-          value={String(portfolio?.totalTrades ?? 0)}
-          sub={`Invested: ${fmtUsd(portfolio?.investedAmount ?? 0)}`}
+          value={String(tradeStats?.totalTrades ?? portfolio?.totalTrades ?? 0)}
+          sub={`Open exposure: ${fmtUsd(portfolio?.investedAmount ?? 0)}`}
         />
       </div>
 
@@ -717,12 +834,155 @@ export function Dashboard() {
           </div>
         </div>{/* end left column */}
 
-        {/* Recent Trades */}
+        {/* Trade execution + recent trades */}
         <div className="lg:col-span-2">
+          <div className={`border rounded-xl p-5 mb-6 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">Algo Order Execution</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {paperTrading
+                    ? 'Paper order mode. Orders are recorded without broker execution.'
+                    : `Live order mode. Uses ${orderForm.assetType === 'crypto' || orderForm.assetType === 'stock' ? (activeExchangeName || 'active exchange connection') : 'MT4/MT5 broker connection'}.`}
+                </p>
+              </div>
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${paperTrading ? 'bg-yellow-500/15 text-yellow-300' : 'bg-green-500/15 text-green-300'}`}>
+                {paperTrading ? 'Paper execution' : 'Live execution'}
+              </span>
+            </div>
+
+            {(orderError || orderMessage) && (
+              <div className={`flex items-center gap-2 border rounded-lg px-3 py-2 mb-4 text-xs ${orderError ? 'bg-red-400/10 border-red-400/20 text-red-400' : 'bg-green-400/10 border-green-400/20 text-green-400'}`}>
+                {orderError ? <AlertCircle className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                {orderError || orderMessage}
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <label className="text-xs text-gray-500">
+                Symbol
+                <input
+                  value={orderForm.symbol}
+                  onChange={e => setOrderForm(f => ({ ...f, symbol: e.target.value }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600"
+                />
+              </label>
+              <label className="text-xs text-gray-500">
+                Asset
+                <select
+                  value={orderForm.assetType}
+                  onChange={e => setOrderForm(f => ({ ...f, assetType: e.target.value as typeof orderForm.assetType }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="crypto">Crypto / Exchange</option>
+                  <option value="forex">Forex / MT4-MT5</option>
+                  <option value="commodity">Metals/Oil / MT4-MT5</option>
+                  <option value="stock">Stock / Exchange</option>
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">
+                Side
+                <select
+                  value={orderForm.side}
+                  onChange={e => setOrderForm(f => ({ ...f, side: e.target.value as 'buy' | 'sell' }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="buy">Buy</option>
+                  <option value="sell">Sell</option>
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">
+                Order Type
+                <select
+                  value={orderForm.orderType}
+                  onChange={e => setOrderForm(f => ({ ...f, orderType: e.target.value as typeof orderForm.orderType }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                >
+                  <option value="market">Market</option>
+                  <option value="limit">Limit</option>
+                  <option value="stop">Stop</option>
+                </select>
+              </label>
+              <label className="text-xs text-gray-500">
+                Entry Price
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={orderForm.entryPrice}
+                  onChange={e => setOrderForm(f => ({ ...f, entryPrice: e.target.value }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <label className="text-xs text-gray-500">
+                Quantity
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={orderForm.quantity}
+                  onChange={e => setOrderForm(f => ({ ...f, quantity: e.target.value }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <label className="text-xs text-gray-500">
+                Stop Loss
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={orderForm.stopLoss}
+                  onChange={e => setOrderForm(f => ({ ...f, stopLoss: e.target.value }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </label>
+              <label className="text-xs text-gray-500">
+                Take Profit
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={orderForm.takeProfit}
+                  onChange={e => setOrderForm(f => ({ ...f, takeProfit: e.target.value }))}
+                  className="mt-1 w-full bg-black/20 border border-white/10 rounded-lg px-3 py-2 text-sm text-white"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              onClick={submitOrder}
+              disabled={orderSaving}
+              className={`mt-4 w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-semibold transition-colors disabled:opacity-50 ${paperTrading ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-200 hover:bg-yellow-500/25' : 'bg-green-500/20 border-green-500/30 text-green-200 hover:bg-green-500/25'}`}
+            >
+              <Play className="w-4 h-4" />
+              {orderSaving ? 'Submitting…' : paperTrading ? 'Open Paper Order' : 'Open Live Broker Order'}
+            </button>
+          </div>
+
           <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-            <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300 mb-4">
-              Recent Trades
-            </h2>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">
+                  Live Trade Feed
+                </h2>
+                <p className="text-xs text-gray-600 mt-1">Refreshes from websocket events and 10-second polling fallback</p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs text-right">
+                <div>
+                  <p className="text-gray-600">30D Net</p>
+                  <p className={statsNetProfit >= 0 ? 'text-green-400' : 'text-red-400'}>{statsNetProfit >= 0 ? '+' : '-'}{fmtUsd(statsNetProfit)}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Win</p>
+                  <p className="text-white">{fmt(statsWinRate, 1)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-600">Trades</p>
+                  <p className="text-white">{tradeStats?.totalTrades ?? trades.length}</p>
+                </div>
+              </div>
+            </div>
 
             {trades.length === 0 ? (
               <div className="text-center py-12">
@@ -740,20 +1000,26 @@ export function Dashboard() {
                       <th className="text-right pb-3">Entry</th>
                       <th className="text-right pb-3">P&L</th>
                       <th className="text-right pb-3">Status</th>
+                      <th className="text-right pb-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {trades.map(trade => {
-                      const pnl = trade.profitLoss ?? 0;
+                      const side = trade.side.toLowerCase();
+                      const status = trade.status.toLowerCase();
+                      const pnl = trade.profit ?? trade.profitLoss ?? 0;
                       const pnlPositive = pnl >= 0;
                       return (
                         <tr key={trade._id} className="hover:bg-white/5 transition-colors">
-                          <td className="py-3 text-white font-semibold">{trade.symbol}</td>
+                          <td className="py-3">
+                            <p className="text-white font-semibold">{trade.symbol}</p>
+                            <p className="text-gray-600 text-xs">{trade.exchange || (trade.isPaperTrade ? 'paper' : 'broker')}</p>
+                          </td>
                           <td className="py-3">
                             <span className={`text-xs px-1.5 py-0.5 rounded font-mono-custom ${
-                              trade.side === 'BUY' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                              side === 'buy' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                             }`}>
-                              {trade.side}
+                              {side.toUpperCase()}
                             </span>
                           </td>
                           <td className="py-3 text-right text-gray-400 font-mono-custom">
@@ -764,12 +1030,27 @@ export function Dashboard() {
                           </td>
                           <td className="py-3 text-right">
                             <span className="flex items-center justify-end gap-1 text-xs">
-                              {trade.status === 'CLOSED' ? (
+                              {status === 'closed' ? (
                                 <><CheckCircle className="w-3 h-3 text-green-400" /><span className="text-gray-500">Closed</span></>
+                              ) : status === 'cancelled' || status === 'error' ? (
+                                <><XCircle className="w-3 h-3 text-red-400" /><span className="text-red-400 capitalize">{status}</span></>
                               ) : (
-                                <><Activity className="w-3 h-3 text-cyan-400 animate-pulse" /><span className="text-cyan-400">Open</span></>
+                                <><Activity className="w-3 h-3 text-cyan-400 animate-pulse" /><span className="text-cyan-400 capitalize">{status}</span></>
                               )}
                             </span>
+                          </td>
+                          <td className="py-3 text-right">
+                            {status === 'open' || status === 'pending' ? (
+                              <button
+                                type="button"
+                                onClick={() => closeOpenTrade(trade._id)}
+                                className="text-xs px-2 py-1 rounded-md bg-red-500/15 border border-red-500/20 text-red-300 hover:bg-red-500/25"
+                              >
+                                Close
+                              </button>
+                            ) : (
+                              <span className="text-gray-700 text-xs">—</span>
+                            )}
                           </td>
                         </tr>
                       );

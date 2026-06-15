@@ -145,6 +145,46 @@ export const api = {
     return request<Record<string, unknown>>(`/trades?${query}`);
   },
 
+  async getTradeStats(timeframe = '30d') {
+    return request<{
+      stats: {
+        totalTrades: number;
+        winningTrades: number;
+        losingTrades: number;
+        totalProfit: number;
+        totalLoss: number;
+        netProfit: number;
+        avgProfit: number;
+        avgLoss: number;
+        winRate: string | number;
+        profitFactor?: string | number;
+      };
+    }>(`/trades/stats/overview?timeframe=${encodeURIComponent(timeframe)}`);
+  },
+
+  async createTrade(payload: {
+    symbol: string;
+    assetType: 'crypto' | 'forex' | 'commodity' | 'stock';
+    side: 'buy' | 'sell';
+    entryPrice: number;
+    quantity: number;
+    stopLoss: number;
+    takeProfit: number;
+    orderType: 'market' | 'limit' | 'stop';
+    isPaperTrade?: boolean;
+  }) {
+    return request<{ message: string; trade: Record<string, unknown> }>('/trades', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async closeTrade(id: string) {
+    return request<{ message: string; trade: Record<string, unknown> }>(`/trades/${id}/close`, {
+      method: 'POST',
+    });
+  },
+
   async getSignals() {
     return request<Record<string, unknown>>('/signals');
   },

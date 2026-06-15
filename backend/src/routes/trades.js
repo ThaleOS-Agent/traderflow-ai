@@ -198,6 +198,16 @@ router.post('/', authenticateToken, async (req, res) => {
     });
     
     await trade.save();
+
+    tradingEngine.broadcast('tradeExecuted', {
+      userId: req.userId,
+      trade: trade.toJSON(),
+      isPaperTrade: paperTrade
+    });
+    tradingEngine.broadcast('portfolio_update', {
+      userId: req.userId,
+      portfolio: user.portfolio
+    });
     
     res.status(201).json({
       message: paperTrade ? 'Paper trade created' : 'Live trade executed',
@@ -222,12 +232,54 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Trade not found or already closed' });
     }
     
+    const user = await User.findById(req.userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let closeExecution = null;
+    if (!trade.isPaperTrade) {
+      if (trade.exchange === 'metatrader') {
+        if (!trade.exchangeOrderId) {
+          return res.status(400).json({ error: 'Cannot close MT4/MT5 trade without broker position ID' });
+        }
+        closeExecution = await metatraderAccountService.closePosition(user, req.body.metatraderAccountId, trade.exchangeOrderId);
+      } else {
+        const exchange = activeExchange(user);
+        if (!exchange) {
+          return res.status(400).json({ error: 'Live close requires an active exchange connection' });
+        }
+
+        const connector = new MultiExchangeConnector(exchange.name, exchange.isTestnet);
+        connector.setCredentials(exchange.apiKey, exchange.apiSecret, exchange.passphrase);
+        closeExecution = await connector.createOrder({
+          symbol: trade.symbol,
+          side: trade.side === 'buy' ? 'sell' : 'buy',
+          type: 'market',
+          quantity: trade.quantity
+        });
+      }
+    }
+
+    if (closeExecution) {
+      trade.metadata = {
+        ...(trade.metadata || {}),
+        closeExecution
+      };
+    }
+
     // Get current price from market data
     const marketData = tradingEngine.marketData.get(trade.symbol);
     const exitPrice = marketData?.currentPrice || trade.entryPrice;
     
     // Close trade
     await tradingEngine.closeTrade(trade, exitPrice, 'manual_close');
+
+    const updatedUser = await User.findById(req.userId);
+    tradingEngine.broadcast('portfolio_update', {
+      userId: req.userId,
+      portfolio: updatedUser?.portfolio
+    });
     
     res.json({
       message: 'Trade closed',

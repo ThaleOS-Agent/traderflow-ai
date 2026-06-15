@@ -20,6 +20,28 @@ const defaultForm = {
   isTestnet: true,
 };
 
+const SUPPORTED_VENUES = [
+  { value: 'binance', label: 'Binance', type: 'Exchange', hint: 'API key + secret' },
+  { value: 'coinbase', label: 'Coinbase Advanced Trade', type: 'Exchange', hint: 'API key + secret + passphrase' },
+  { value: 'kraken', label: 'Kraken', type: 'Exchange', hint: 'API key + secret' },
+  { value: 'kucoin', label: 'KuCoin', type: 'Exchange', hint: 'API key + secret + passphrase' },
+  { value: 'bybit', label: 'Bybit', type: 'Exchange', hint: 'API key + secret' },
+  { value: 'ftx', label: 'FTX / Legacy', type: 'Exchange', hint: 'Legacy connector' },
+  { value: 'gemini', label: 'Gemini', type: 'Exchange', hint: 'API key + secret' },
+  { value: 'bitfinex', label: 'Bitfinex', type: 'Exchange', hint: 'API key + secret' },
+  { value: 'interactive_brokers', label: 'Interactive Brokers', type: 'Broker', hint: 'OAuth bearer token' },
+  { value: 'oanda', label: 'OANDA', type: 'Broker', hint: 'Token + account ID' },
+];
+
+function venueMeta(name: string) {
+  return SUPPORTED_VENUES.find(venue => venue.value === name) ?? {
+    value: name,
+    label: name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    type: 'Connection',
+    hint: 'API credentials',
+  };
+}
+
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
   const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
@@ -85,11 +107,11 @@ export function ExchangeConnections() {
         {connections.map(connection => (
           <div key={connection.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
             <div>
-              <p className="text-white text-xs font-semibold capitalize">
-                {connection.name} {connection.isActive && <span className="text-green-400">Active</span>}
+              <p className="text-white text-xs font-semibold">
+                {venueMeta(connection.name).label} {connection.isActive && <span className="text-green-400">Active</span>}
               </p>
               <p className="text-gray-500 text-xs">
-                {connection.isTestnet ? 'Testnet' : 'Live'} · {connection.hasApiKey ? 'API key saved' : 'No key'}
+                {venueMeta(connection.name).type} · {connection.isTestnet ? 'Testnet / practice' : 'Live'} · {connection.hasApiKey ? 'API key saved' : 'No key'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -120,13 +142,15 @@ export function ExchangeConnections() {
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
             className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white"
           >
-            <option value="binance">Binance</option>
-            <option value="coinbase">Coinbase</option>
-            <option value="kraken">Kraken</option>
-            <option value="kucoin">KuCoin</option>
-            <option value="bybit">Bybit</option>
-            <option value="oanda">OANDA</option>
+            {SUPPORTED_VENUES.map(venue => (
+              <option key={venue.value} value={venue.value}>
+                {venue.type}: {venue.label}
+              </option>
+            ))}
           </select>
+          <p className="col-span-2 text-xs text-gray-500">
+            {venueMeta(String(form.name)).hint}
+          </p>
           <input
             value={String(form.apiKey)}
             onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}

@@ -12,6 +12,16 @@ interface WalletState {
   verified: boolean;
 }
 
+interface WalletSessionState {
+  id: string;
+  uri: string;
+  message: string;
+  expiresAt: string;
+  status?: string;
+  walletAddress?: string;
+  chainId?: number;
+}
+
 const CHAIN_META: Record<number, { name: string; symbol: string }> = {
   1:     { name: 'Ethereum',  symbol: 'ETH'  },
   56:    { name: 'BSC',       symbol: 'BNB'  },
@@ -45,8 +55,11 @@ declare global {
 export function WalletConnect() {
   const [wallet, setWallet] = useState<WalletState | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [sessionCopied, setSessionCopied] = useState(false);
+  const [walletSession, setWalletSession] = useState<WalletSessionState | null>(null);
 
   const fetchBalance = useCallback(async (address: string) => {
     if (!window.ethereum) return;
@@ -110,6 +123,19 @@ export function WalletConnect() {
     }
   };
 
+  const createWalletConnectSession = async () => {
+    setError('');
+    setSessionLoading(true);
+    try {
+      const res = await api.createWalletSession();
+      setWalletSession({ ...res.session, status: 'pending' });
+    } catch (err) {
+      setError((err as Error).message || 'Failed to create WalletConnect session.');
+    } finally {
+      setSessionLoading(false);
+    }
+  };
+
   const disconnect = async () => {
     const sessionId = wallet?.sessionId;
     setWallet(null);
@@ -123,6 +149,13 @@ export function WalletConnect() {
     navigator.clipboard.writeText(wallet.address);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const copySessionUri = () => {
+    if (!walletSession) return;
+    navigator.clipboard.writeText(walletSession.uri);
+    setSessionCopied(true);
+    setTimeout(() => setSessionCopied(false), 2000);
   };
 
   const refreshBalance = useCallback(async () => {
@@ -149,6 +182,20 @@ export function WalletConnect() {
       window.ethereum?.removeListener('chainChanged', onChain);
     };
   }, [wallet]);
+
+  useEffect(() => {
+    if (!walletSession || walletSession.status === 'connected') return;
+    const sessionId = walletSession.id;
+    const timer = window.setInterval(async () => {
+      try {
+        const res = await api.getWalletSession(sessionId);
+        setWalletSession(current => current ? { ...current, ...res.status } : current);
+      } catch {
+        // Session polling is informational only.
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [walletSession?.id, walletSession?.status]);
 
   if (!wallet) {
     return (
@@ -177,6 +224,56 @@ export function WalletConnect() {
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wallet className="w-4 h-4" />}
           {loading ? 'Verifying…' : 'Connect MetaMask'}
         </button>
+
+        <div className="mt-3 border-t border-white/10 pt-3">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div>
+              <p className="text-white text-xs font-semibold">WalletConnect Session</p>
+              <p className="text-gray-500 text-xs">Use the URI with a WalletConnect-compatible wallet</p>
+            </div>
+            <button
+              type="button"
+              onClick={createWalletConnectSession}
+              disabled={sessionLoading}
+              className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs text-gray-300 disabled:opacity-50"
+            >
+              {sessionLoading ? 'Creating…' : walletSession ? 'New URI' : 'Create URI'}
+            </button>
+          </div>
+
+          {walletSession && (
+            <div className="bg-black/20 border border-white/10 rounded-lg p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-gray-500">Status</span>
+                <span className="text-xs text-cyan-300 capitalize">{walletSession.status ?? 'pending'}</span>
+              </div>
+              <div>
+                <p className="text-xs text-gray-500 mb-1">URI</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 min-w-0 truncate text-[11px] text-gray-300 bg-white/5 rounded px-2 py-1">
+                    {walletSession.uri}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={copySessionUri}
+                    className="text-gray-500 hover:text-gray-300 transition-colors"
+                    title="Copy WalletConnect URI"
+                  >
+                    {sessionCopied ? <CheckCircle className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              <p className="text-xs text-gray-600">
+                Expires {new Date(walletSession.expiresAt).toLocaleString()}
+              </p>
+              {walletSession.walletAddress && (
+                <p className="text-xs text-green-400">
+                  Connected: {truncate(walletSession.walletAddress)}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     );
   }

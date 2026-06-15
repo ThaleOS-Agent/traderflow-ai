@@ -256,6 +256,17 @@ export const api = {
     }>('/wallet/connect', { method: 'POST' });
   },
 
+  async getWalletSession(sessionId: string) {
+    return request<{
+      success: boolean;
+      status: {
+        status: string;
+        walletAddress?: string;
+        chainId?: number;
+      };
+    }>(`/wallet/session/${encodeURIComponent(sessionId)}`);
+  },
+
   async verifyWallet(payload: {
     sessionId: string;
     address: string;

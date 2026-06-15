@@ -6,7 +6,7 @@ import {
   Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu,
 } from 'lucide-react';
 import { api } from './api';
-import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
+import { useTradeWebSocket, type LiveMarketData, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
 import { WalletConnect } from './WalletConnect';
 import { SubscriptionPage } from './SubscriptionPage';
 import { TradingViewChart } from './TradingViewChart';
@@ -137,6 +137,15 @@ interface TradeStats {
   profitFactor?: string | number;
 }
 
+interface LiveFeedEvent {
+  id: string;
+  event: string;
+  kind: 'signal' | 'order' | 'trade' | 'market' | 'portfolio' | 'system';
+  title: string;
+  detail: string;
+  timestamp: number;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
@@ -149,6 +158,54 @@ function fmtUsd(n: number) {
 
 function strategyLabel(code: string) {
   return code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function eventKind(event: string): LiveFeedEvent['kind'] {
+  if (event.toLowerCase().includes('signal')) return 'signal';
+  if (event.toLowerCase().includes('order') || event === 'mt5_order') return 'order';
+  if (event.toLowerCase().includes('trade')) return 'trade';
+  if (event === 'marketData') return 'market';
+  if (event === 'portfolio_update') return 'portfolio';
+  return 'system';
+}
+
+function describeLiveEvent(event: string, data: unknown): Pick<LiveFeedEvent, 'title' | 'detail' | 'kind'> {
+  const kind = eventKind(event);
+  const record = getRecord(data);
+  const payload = getRecord(record.trade ?? record.order ?? data);
+  const symbol = String(payload.symbol ?? record.symbol ?? '');
+  const side = String(payload.side ?? record.side ?? '').toUpperCase();
+
+  if (kind === 'signal') {
+    return {
+      kind,
+      title: symbol ? `${symbol} ${side || 'Signal'}` : 'New signal',
+      detail: `${payload.strategy ?? record.strategy ?? 'strategy'} · ${payload.confidenceScore ?? record.confidenceScore ?? '—'}% confidence`,
+    };
+  }
+  if (kind === 'order' || kind === 'trade') {
+    return {
+      kind,
+      title: symbol ? `${symbol} ${side || 'Order'}` : event,
+      detail: `${payload.status ?? record.status ?? 'received'} · ${payload.exchange ?? record.exchange ?? (record.isPaperTrade ? 'paper' : 'broker')}`,
+    };
+  }
+  if (kind === 'market') {
+    const pairs = Array.isArray(record.pairs) ? record.pairs.join(', ') : symbol;
+    return {
+      kind,
+      title: 'Market data update',
+      detail: pairs ? `Updated: ${pairs}` : 'Market feed broadcast received',
+    };
+  }
+  if (kind === 'portfolio') {
+    return { kind, title: 'Portfolio update', detail: 'Balances and exposure refreshed' };
+  }
+  return { kind, title: event, detail: 'WebSocket event received' };
 }
 
 function StatCard({
@@ -217,6 +274,7 @@ export function Dashboard() {
   const [orderError, setOrderError] = useState('');
   const [orderMessage, setOrderMessage] = useState('');
   const [showDashboardMenu, setShowDashboardMenu] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<LiveFeedEvent[]>([]);
   const [orderForm, setOrderForm] = useState({
     symbol: 'BTCUSDT',
     assetType: 'crypto' as 'crypto' | 'forex' | 'commodity' | 'stock',
@@ -231,19 +289,29 @@ export function Dashboard() {
   // Keep stable refs so WebSocket callbacks don't go stale
   const tradesRef = useRef(trades);
   const signalsRef = useRef(signals);
+  const liveEventsRef = useRef(liveEvents);
   useEffect(() => { tradesRef.current = trades; }, [trades]);
   useEffect(() => { signalsRef.current = signals; }, [signals]);
+  useEffect(() => { liveEventsRef.current = liveEvents; }, [liveEvents]);
+
+  const appendLiveEvent = useCallback((event: string, data: unknown, timestamp = Date.now()) => {
+    const description = describeLiveEvent(event, data);
+    const id = `${event}-${timestamp}-${liveEventsRef.current.length}`;
+    setLiveEvents(prev => [{ id, event, timestamp, ...description }, ...prev].slice(0, 12));
+  }, []);
 
   // Live WebSocket updates
   const handleSignal = useCallback((sig: LiveSignal) => {
+    appendLiveEvent('newSignal', sig);
     setSignals(prev => {
       const exists = prev.some(s => s._id === sig._id);
       if (exists) return prev;
       return [sig, ...prev].slice(0, 6);
     });
-  }, []);
+  }, [appendLiveEvent]);
 
   const handleTrade = useCallback((trade: LiveTrade) => {
+    appendLiveEvent('tradeExecuted', trade);
     setTrades(prev => {
       const idx = prev.findIndex(t => t._id === trade._id);
       if (idx >= 0) {
@@ -253,7 +321,27 @@ export function Dashboard() {
       }
       return [trade as Trade, ...prev].slice(0, 10);
     });
-  }, []);
+  }, [appendLiveEvent]);
+
+  const handleOrder = useCallback((order: LiveTrade | Record<string, unknown>) => {
+    appendLiveEvent('order_update', order);
+    const maybeTrade = order as Partial<LiveTrade>;
+    if (maybeTrade._id && maybeTrade.symbol) {
+      setTrades(prev => {
+        const idx = prev.findIndex(t => t._id === maybeTrade._id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = maybeTrade as Trade;
+          return next;
+        }
+        return [maybeTrade as Trade, ...prev].slice(0, 10);
+      });
+    }
+  }, [appendLiveEvent]);
+
+  const handleMarketData = useCallback((data: LiveMarketData) => {
+    appendLiveEvent('marketData', data);
+  }, [appendLiveEvent]);
 
   const refreshLiveData = useCallback(async () => {
     const [portfolioRes, tradesRes, statsRes, feedRes, strategyRes, aiRes] = await Promise.allSettled([
@@ -285,12 +373,20 @@ export function Dashboard() {
     }
   }, []);
 
-  const { status: wsStatus } = useTradeWebSocket({
+  const { status: wsStatus, lastEvent: lastWsEvent } = useTradeWebSocket({
     onSignal: handleSignal,
     onTrade: handleTrade,
+    onOrder: handleOrder,
+    onMarketData: handleMarketData,
     onPortfolioUpdate: useCallback(() => {
+      appendLiveEvent('portfolio_update', {});
       refreshLiveData().catch(() => {/* non-critical */});
-    }, [refreshLiveData]),
+    }, [appendLiveEvent, refreshLiveData]),
+    onEvent: useCallback((event: LiveWsEvent) => {
+      if (['connected', 'authenticated', 'subscribed', 'error'].includes(event.event)) {
+        appendLiveEvent(event.event, event.data, event.timestamp);
+      }
+    }, [appendLiveEvent]),
   });
 
   const load = useCallback(async (silent = false) => {
@@ -546,6 +642,7 @@ export function Dashboard() {
                 {[
                   ['overview', 'Portfolio Overview'],
                   ['live-market-feed', 'Live Market Feed'],
+                  ['live-signals-orders', 'Live Signals & Orders'],
                   ['strategy-results', 'Strategy Results'],
                   ['trading-mode', 'Paper / Live Toggle'],
                   ['broker-connections', 'Broker Connections'],
@@ -1099,6 +1196,54 @@ export function Dashboard() {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </div>
+
+          <div id="live-signals-orders" className="bg-white/5 border border-white/10 rounded-xl p-5 mt-6 scroll-mt-24">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+              <div>
+                <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">
+                  Live Signals & Orders Feed
+                </h2>
+                <p className="text-xs text-gray-600 mt-1">
+                  WebSocket signals, broker orders, trade executions, and market feed events
+                </p>
+              </div>
+              <div className="text-xs text-right">
+                <p className="text-gray-600">Last event</p>
+                <p className="text-cyan-300">{lastWsEvent ?? 'waiting'}</p>
+              </div>
+            </div>
+
+            {liveEvents.length === 0 ? (
+              <div className="text-center py-10">
+                <Radio className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                <p className="text-gray-600 text-sm">Waiting for live signal, order, trade, or market events</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {liveEvents.map(item => (
+                  <div key={item.id} className="flex items-start justify-between gap-3 bg-black/20 border border-white/10 rounded-lg px-3 py-2.5">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`w-2 h-2 rounded-full ${
+                          item.kind === 'signal' ? 'bg-purple-400' :
+                          item.kind === 'order' ? 'bg-cyan-400' :
+                          item.kind === 'trade' ? 'bg-green-400' :
+                          item.kind === 'market' ? 'bg-yellow-400' :
+                          item.kind === 'portfolio' ? 'bg-blue-400' : 'bg-gray-500'
+                        }`} />
+                        <p className="text-sm text-white font-semibold truncate">{item.title}</p>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{item.detail}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-[11px] uppercase text-gray-600">{item.kind}</p>
+                      <p className="text-xs text-gray-500">{new Date(item.timestamp).toLocaleTimeString()}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>

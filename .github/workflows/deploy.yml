@@ -1,24 +1,80 @@
-name: Build
+name: CI/CD
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
-    branches: [main]
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tradeflow-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  ci:
+    name: Build and Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build
+      - name: Build frontend
         run: npm run build
+
+      - name: Install backend dependencies
+        run: npm --prefix backend ci
+
+      - name: Check backend entrypoint syntax
+        run: node --check backend/src/server.js
+
+      - name: Validate production backend install
+        run: npm --prefix backend ci --omit=dev --dry-run
+
+      - name: Validate Docker image build
+        run: docker build -t traderflow-ai:${{ github.sha }} .
+
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: ci
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Check Railway token
+        run: test -n "$RAILWAY_TOKEN"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Deploy Docker service to Railway
+        run: railway up --detach --service "${RAILWAY_SERVICE_NAME:-traderflow-ai}"
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}

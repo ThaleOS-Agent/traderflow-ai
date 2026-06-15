@@ -38,15 +38,8 @@ async function seed() {
   logger.info('Connected to MongoDB');
 
   for (const account of ACCOUNTS) {
-    const existing = await User.findOne({ email: account.email });
-    if (existing) {
-      logger.info(`Account already exists, skipping: ${account.email}`);
-      continue;
-    }
-
-    const user = new User({
+    const accountData = {
       email: account.email,
-      password: account.password,
       firstName: account.firstName,
       lastName: account.lastName,
       role: account.role,
@@ -81,6 +74,20 @@ async function seed() {
         takeProfitPercent: 4,
         leverage: 1,
       },
+    };
+
+    const existing = await User.findOne({ email: account.email });
+    if (existing) {
+      existing.set(accountData);
+      existing.password = account.password;
+      await existing.save();
+      logger.info(`Updated: ${account.email} (${account.role})`);
+      continue;
+    }
+
+    const user = new User({
+      ...accountData,
+      password: account.password,
     });
 
     await user.save();

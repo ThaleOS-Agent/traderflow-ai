@@ -25,19 +25,38 @@ export interface LiveSignal {
 export interface LiveTrade {
   _id: string;
   symbol: string;
-  side: 'BUY' | 'SELL';
+  side: 'buy' | 'sell' | 'BUY' | 'SELL';
   status: string;
   entryPrice: number;
+  exitPrice?: number;
   quantity: number;
+  profit?: number;
   profitLoss?: number;
   strategy: string;
   createdAt: string;
+  openedAt?: string;
+}
+
+export interface LiveMarketData {
+  symbol?: string;
+  pairs?: string[];
+  timestamp?: number;
+  [key: string]: unknown;
+}
+
+export interface LiveWsEvent {
+  event: string;
+  data?: unknown;
+  timestamp?: number;
 }
 
 interface UseTradeWebSocketOptions {
   onSignal?: (signal: LiveSignal) => void;
   onTrade?: (trade: LiveTrade) => void;
+  onOrder?: (order: LiveTrade | Record<string, unknown>) => void;
+  onMarketData?: (data: LiveMarketData) => void;
   onPortfolioUpdate?: (data: unknown) => void;
+  onEvent?: (event: LiveWsEvent) => void;
 }
 
 function getWsUrl(): string {
@@ -50,7 +69,7 @@ function getWsUrl(): string {
 }
 
 export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
-  const { onSignal, onTrade, onPortfolioUpdate } = options;
+  const { onSignal, onTrade, onOrder, onMarketData, onPortfolioUpdate, onEvent } = options;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
@@ -87,6 +106,7 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
       try {
         const msg: WsMessage = JSON.parse(evt.data as string);
         setLastEvent(msg.event);
+        onEvent?.({ event: msg.event, data: msg.data, timestamp: msg.timestamp });
 
         switch (msg.event) {
           case 'authenticated':
@@ -94,17 +114,38 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
             // Subscribe to live channels
             ws.send(JSON.stringify({
               event: 'subscribe',
-              payload: { channels: ['signals', 'trades', 'portfolio'] },
+              payload: { channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData'] },
             }));
             break;
 
           case 'signal':
+          case 'newSignal':
             onSignal?.(msg.data as LiveSignal);
             break;
 
           case 'trade':
           case 'trade_update':
-            onTrade?.(msg.data as LiveTrade);
+          case 'tradeExecuted':
+          case 'tradeClosed':
+          case 'autoTradeExecuted': {
+            const data = msg.data as LiveTrade | { trade?: LiveTrade };
+            onTrade?.(('trade' in data && data.trade ? data.trade : data) as LiveTrade);
+            break;
+          }
+
+          case 'order':
+          case 'order_update':
+          case 'orderExecuted':
+          case 'orderClosed':
+          case 'mt5_order': {
+            const data = msg.data as LiveTrade | { order?: LiveTrade; trade?: LiveTrade };
+            const order = ('order' in data && data.order) || ('trade' in data && data.trade) || data;
+            onOrder?.(order as LiveTrade | Record<string, unknown>);
+            break;
+          }
+
+          case 'marketData':
+            onMarketData?.(msg.data as LiveMarketData);
             break;
 
           case 'portfolio_update':
@@ -132,7 +173,7 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
     ws.onerror = () => {
       ws.close(); // triggers onclose → reconnect
     };
-  }, [onSignal, onTrade, onPortfolioUpdate]);
+  }, [onSignal, onTrade, onOrder, onMarketData, onPortfolioUpdate, onEvent]);
 
   useEffect(() => {
     mountedRef.current = true;

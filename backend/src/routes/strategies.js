@@ -6,6 +6,29 @@ import { authenticateToken } from './auth.js';
 
 const router = express.Router();
 
+const isSafePlainObject = (value) => {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (key.startsWith('$') || key.includes('.')) {
+      return false;
+    }
+
+    if (
+      nestedValue !== null &&
+      typeof nestedValue === 'object' &&
+      !Array.isArray(nestedValue) &&
+      !isSafePlainObject(nestedValue)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 // Get all strategies
 router.get('/', async (req, res) => {
   try {
@@ -85,10 +108,14 @@ router.post('/', authenticateToken, async (req, res) => {
 router.put('/:code/performance', authenticateToken, async (req, res) => {
   try {
     const { performance } = req.body;
+
+    if (!isSafePlainObject(performance)) {
+      return res.status(400).json({ error: 'Invalid performance payload' });
+    }
     
     const strategy = await Strategy.findOneAndUpdate(
       { code: req.params.code },
-      { performance, updatedAt: new Date() },
+      { $set: { performance, updatedAt: new Date() } },
       { new: true }
     );
     

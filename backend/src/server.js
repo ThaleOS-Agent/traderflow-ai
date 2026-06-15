@@ -76,7 +76,6 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use(limiter);
 
 // Stricter rate limit for auth endpoints (5 req / 15 min per IP)
 const authLimiter = rateLimit({
@@ -89,6 +88,7 @@ const authLimiter = rateLimit({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use('/api', limiter);
 
 // Connect to database
 connectDB();

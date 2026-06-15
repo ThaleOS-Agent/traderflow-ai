@@ -1,16 +1,16 @@
 import { TrendingUp, Github, Twitter, MessageCircle } from 'lucide-react';
 
 const PLATFORM_LINKS: { label: string; href: string }[] = [
-  { label: 'Strategies',    href: '#features' },
-  { label: 'Signals',       href: '#features' },
-  { label: 'Backtesting',   href: '#features' },
-  { label: 'Risk Manager',  href: '#features' },
-  { label: 'Social Trading',href: '#features' },
+  { label: 'Strategies',     href: '#strategies' },
+  { label: 'Signals',        href: '#gallery' },
+  { label: 'Backtesting',    href: '#tour' },
+  { label: 'Risk Manager',   href: '#tour' },
+  { label: 'Social Trading', href: '#tour' },
 ];
 
 const COMPANY_LINKS: { label: string; href: string }[] = [
-  { label: 'About',            href: '#about' },
-  { label: 'Pricing',          href: '#pricing' },
+  { label: 'About',            href: '#strategies' },
+  { label: 'Pricing',          href: 'mailto:billing@tradeflow.ai?subject=Pricing' },
   { label: 'Documentation',    href: 'mailto:support@tradeflow.ai?subject=Documentation' },
   { label: 'Support',          href: 'mailto:support@tradeflow.ai' },
   { label: 'Terms of Service', href: 'mailto:legal@tradeflow.ai?subject=Terms+of+Service' },

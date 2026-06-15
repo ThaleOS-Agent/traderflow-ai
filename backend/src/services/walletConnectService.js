@@ -1,6 +1,10 @@
 import { logger } from '../utils/logger.js';
 import { User } from '../models/User.js';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
+import { Web3 } from 'web3';
+
+const web3 = new Web3();
 
 /**
  * WalletConnect Service
@@ -74,10 +78,10 @@ export class WalletConnectService {
     };
     
     // Founder access
-    this.founderWallets = [
-      // Add founder wallet addresses here
-      '0x0000000000000000000000000000000000000000' // Placeholder
-    ];
+    this.founderWallets = (process.env.FOUNDER_WALLETS || '0x0000000000000000000000000000000000000000')
+      .split(',')
+      .map(address => address.trim().toLowerCase())
+      .filter(Boolean);
   }
 
   /**
@@ -85,9 +89,18 @@ export class WalletConnectService {
    */
   async createSession() {
     const sessionId = crypto.randomUUID();
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const message = [
+      'TradeFlow AI Wallet Login',
+      `Session: ${sessionId}`,
+      `Nonce: ${nonce}`,
+      `Issued At: ${new Date().toISOString()}`
+    ].join('\n');
     const session = {
       id: sessionId,
       status: 'pending',
+      nonce,
+      message,
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
       uri: `wc:${sessionId}@2?relay-protocol=irn&symKey=${crypto.randomBytes(32).toString('hex')}`
@@ -105,21 +118,7 @@ export class WalletConnectService {
    */
   async connectWallet(sessionId, walletData) {
     try {
-      const session = this.activeSessions.get(sessionId);
-      if (!session) {
-        throw new Error('Session not found or expired');
-      }
-      
-      const { address, chainId, signature, message } = walletData;
-      
-      // Verify signature
-      const isValid = await this.verifySignature(address, message, signature);
-      if (!isValid) {
-        throw new Error('Invalid signature');
-      }
-      
-      // Normalize address
-      const normalizedAddress = address.toLowerCase();
+      const { session, normalizedAddress, chainId } = await this.validateWalletSession(sessionId, walletData);
       
       // Check if user exists
       let user = await User.findOne({ walletAddress: normalizedAddress });
@@ -146,7 +145,9 @@ export class WalletConnectService {
       if (isFounder) {
         user.subscription.tier = 'founder';
         user.subscription.status = 'lifetime';
+        user.subscription.expiresAt = null;
         user.isFounder = true;
+        user.role = 'founder';
         await user.save();
         logger.info(`Founder login: ${normalizedAddress}`);
       }
@@ -179,17 +180,96 @@ export class WalletConnectService {
     }
   }
 
+  async validateWalletSession(sessionId, walletData) {
+    const session = this.activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error('Session not found or expired');
+    }
+    if (session.expiresAt < new Date()) {
+      this.activeSessions.delete(sessionId);
+      throw new Error('Session expired');
+    }
+
+    const { address, chainId, signature, message } = walletData;
+    if (!address || !signature || !message || message !== session.message) {
+      throw new Error('Invalid session message');
+    }
+
+    const isValid = await this.verifySignature(address, message, signature);
+    if (!isValid) {
+      throw new Error('Invalid signature');
+    }
+
+    return {
+      session,
+      normalizedAddress: address.toLowerCase(),
+      chainId
+    };
+  }
+
+  async linkWalletToUser(userId, sessionId, walletData) {
+    try {
+      const { session, normalizedAddress, chainId } = await this.validateWalletSession(sessionId, walletData);
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const existing = await User.findOne({ walletAddress: normalizedAddress });
+      if (existing && existing._id.toString() !== user._id.toString()) {
+        throw new Error('Wallet is already linked to another account');
+      }
+
+      user.walletAddress = normalizedAddress;
+      user.chainId = String(chainId || '');
+      user.lastLogin = new Date();
+
+      const isFounder = this.founderWallets.includes(normalizedAddress);
+      if (isFounder) {
+        user.subscription = {
+          tier: 'founder',
+          status: 'lifetime',
+          startedAt: user.subscription?.startedAt || new Date(),
+          expiresAt: null
+        };
+        user.isFounder = true;
+        user.role = 'founder';
+      }
+
+      await user.save();
+
+      session.status = 'connected';
+      session.walletAddress = normalizedAddress;
+      session.userId = user._id.toString();
+      session.chainId = chainId;
+
+      return {
+        success: true,
+        linked: true,
+        user: {
+          id: user._id,
+          email: user.email,
+          walletAddress: normalizedAddress,
+          tier: user.subscription?.tier || 'free',
+          isFounder: user.isFounder || false,
+          features: this.getTierFeatures(user.subscription?.tier || 'free')
+        },
+        session
+      };
+    } catch (error) {
+      logger.error('Wallet link error:', error.message);
+      throw error;
+    }
+  }
+
   /**
    * Verify wallet signature
    */
   async verifySignature(address, message, signature) {
     try {
-      // In production, use ethers.js or web3.js to verify
-      // For now, simulate verification
-      const expectedMessage = `TradeFlow AI Login\nNonce: ${Date.now()}\nTimestamp: ${new Date().toISOString()}`;
-      
-      // Simple check - in production use proper EIP-191/EIP-712 verification
-      return signature && signature.length === 132 && signature.startsWith('0x');
+      if (!address || !message || !signature) return false;
+      const recovered = web3.eth.accounts.recover(message, signature);
+      return recovered.toLowerCase() === address.toLowerCase();
     } catch (error) {
       logger.error('Signature verification error:', error.message);
       return false;
@@ -200,18 +280,16 @@ export class WalletConnectService {
    * Generate JWT token
    */
   generateToken(user) {
-    const payload = {
-      userId: user._id.toString(),
-      walletAddress: user.walletAddress,
-      tier: user.subscription.tier,
-      isFounder: user.isFounder || false,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + (24 * 60 * 60) // 24 hours
-    };
-    
-    // In production, use proper JWT signing
-    const token = Buffer.from(JSON.stringify(payload)).toString('base64');
-    return token;
+    return jwt.sign(
+      {
+        userId: user._id.toString(),
+        walletAddress: user.walletAddress,
+        tier: user.subscription?.tier || 'free',
+        isFounder: user.isFounder || false
+      },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
   }
 
   /**
@@ -219,13 +297,7 @@ export class WalletConnectService {
    */
   verifyToken(token) {
     try {
-      const payload = JSON.parse(Buffer.from(token, 'base64').toString());
-      
-      if (payload.exp < Math.floor(Date.now() / 1000)) {
-        throw new Error('Token expired');
-      }
-      
-      return payload;
+      return jwt.verify(token, process.env.JWT_SECRET);
     } catch (error) {
       throw new Error('Invalid token');
     }
@@ -236,11 +308,15 @@ export class WalletConnectService {
    */
   getTierFeatures(tier) {
     if (tier === 'founder') {
-      return {
+      return [...new Set([
         ...this.subscriptionTiers.diamond.features,
-        founder: true,
-        all_features: true
-      };
+        'founder',
+        'all_features',
+        'all_exchanges',
+        'all_strategies',
+        'user_management',
+        'system_config'
+      ])];
     }
     
     const tierConfig = this.subscriptionTiers[tier];

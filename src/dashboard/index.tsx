@@ -3,7 +3,7 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play,
+  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveSignal, type LiveTrade } from '../hooks/useTradeWebSocket';
@@ -216,6 +216,7 @@ export function Dashboard() {
   const [orderSaving, setOrderSaving] = useState(false);
   const [orderError, setOrderError] = useState('');
   const [orderMessage, setOrderMessage] = useState('');
+  const [showDashboardMenu, setShowDashboardMenu] = useState(false);
   const [orderForm, setOrderForm] = useState({
     symbol: 'BTCUSDT',
     assetType: 'crypto' as 'crypto' | 'forex' | 'commodity' | 'stock',
@@ -507,6 +508,11 @@ export function Dashboard() {
   const statsProfitFactor = Number(tradeStats?.profitFactor ?? 0);
   const activeExchangeName = trades.find(trade => trade.exchange)?.exchange;
 
+  const jumpToSection = (id: string) => {
+    setShowDashboardMenu(false);
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="min-h-screen bg-[#050508] text-white px-6 py-8">
       {/* Header */}
@@ -526,6 +532,38 @@ export function Dashboard() {
           <p className="text-gray-500 text-sm">Welcome back. Here's your portfolio overview.</p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowDashboardMenu(open => !open)}
+              className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              <Menu className="w-4 h-4" />
+              Menu
+            </button>
+            {showDashboardMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-[#0b0b10] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
+                {[
+                  ['overview', 'Portfolio Overview'],
+                  ['live-market-feed', 'Live Market Feed'],
+                  ['strategy-results', 'Strategy Results'],
+                  ['trading-mode', 'Paper / Live Toggle'],
+                  ['broker-connections', 'Broker Connections'],
+                  ['algo-execution', 'Algo Execution'],
+                  ['live-trade-feed', 'Live Trade Feed'],
+                ].map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => jumpToSection(id)}
+                    className="w-full text-left px-4 py-2.5 text-sm text-gray-300 hover:text-white hover:bg-white/10 transition-colors"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {/* WebSocket status pill */}
           <div className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border ${
             wsStatus === 'authenticated'
@@ -567,7 +605,7 @@ export function Dashboard() {
       )}
 
       {/* Portfolio stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div id="overview" className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 scroll-mt-24">
         <StatCard
           icon={DollarSign}
           label="Total Balance"
@@ -603,7 +641,7 @@ export function Dashboard() {
 
       {/* Cross-asset market feed + strategy/AI status */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-6">
-        <div className="xl:col-span-2 bg-white/5 border border-white/10 rounded-xl p-5">
+        <div id="live-market-feed" className="xl:col-span-2 bg-white/5 border border-white/10 rounded-xl p-5 scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">Live Market Feed</h2>
@@ -638,7 +676,7 @@ export function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+        <div className="bg-white/5 border border-white/10 rounded-xl p-5 scroll-mt-24">
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">AI Learning</h2>
             <Brain className="w-4 h-4 text-purple-400" />
@@ -665,7 +703,7 @@ export function Dashboard() {
       </div>
 
       {strategyResults.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div id="strategy-results" className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6 scroll-mt-24">
           {strategyResults.map(result => (
             <div key={result.strategy} className="bg-white/5 border border-white/10 rounded-xl p-4">
               <div className="flex items-start justify-between gap-2 mb-3">
@@ -705,7 +743,7 @@ export function Dashboard() {
         {/* Left column: wallet + MT5 + subscription card */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           {/* Trading mode controls */}
-          <div className={`border rounded-xl p-5 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+          <div id="trading-mode" className={`border rounded-xl p-5 scroll-mt-24 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
             <div className="flex items-center justify-between gap-3 mb-4">
               <div className="flex items-center gap-3">
                 <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${paperTrading ? 'bg-yellow-500/20' : 'bg-green-500/20'}`}>
@@ -764,10 +802,14 @@ export function Dashboard() {
           <WalletConnect />
 
           {/* Exchange Connections */}
-          <ExchangeConnections />
+          <div id="broker-connections" className="scroll-mt-24">
+            <ExchangeConnections />
+          </div>
 
           {/* MT5 Panel */}
-          <MT5Panel />
+          <div className="scroll-mt-24">
+            <MT5Panel />
+          </div>
 
           {/* Subscription card */}
           <div
@@ -836,7 +878,7 @@ export function Dashboard() {
 
         {/* Trade execution + recent trades */}
         <div className="lg:col-span-2">
-          <div className={`border rounded-xl p-5 mb-6 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
+          <div id="algo-execution" className={`border rounded-xl p-5 mb-6 scroll-mt-24 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
               <div>
                 <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">Algo Order Execution</h2>
@@ -960,7 +1002,7 @@ export function Dashboard() {
             </button>
           </div>
 
-          <div className="bg-white/5 border border-white/10 rounded-xl p-5">
+          <div id="live-trade-feed" className="bg-white/5 border border-white/10 rounded-xl p-5 scroll-mt-24">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
               <div>
                 <h2 className="font-semibold text-sm uppercase tracking-wider text-gray-300">

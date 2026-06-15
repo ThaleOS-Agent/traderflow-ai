@@ -392,4 +392,18 @@ export const api = {
       `/exchange/klines/${symbol}?${q}`
     );
   },
+
+  async updateTradingSettings(settings: Record<string, unknown>) {
+    return request<{ settings: Record<string, unknown> }>('/user/trading-settings', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  },
+
+  async addExchangeKeys(payload: { exchange: string; apiKey: string; apiSecret: string; isTestnet: boolean }) {
+    return request<{ message: string; exchange: Record<string, unknown> }>('/user/exchange-keys', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };

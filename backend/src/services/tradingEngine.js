@@ -386,7 +386,11 @@ export class TradingEngine {
       const portfolio = await recalculatePortfolio(userId);
 
       // Update signal with auto-trade info
-      await Signal.findByIdAndUpdate(signal._id, {
+      const signalId = signal?._id?.toString?.() || signal?._id;
+      if (!signalId) {
+        throw new Error('Missing signal id for auto-trade update');
+      }
+      await Signal.findByIdAndUpdate(signalId, {
         $push: {
           autoTrades: {
             userId,
@@ -569,10 +573,22 @@ export class TradingEngine {
         await this.registerUser(userId);
       }
 
-      // Override with custom params if provided
+      // Only allow safe execution overrides from user input
+      const allowedCustomParams = {};
+      if (customParams && typeof customParams === 'object' && !Array.isArray(customParams)) {
+        const allowedKeys = ['entryPrice', 'stopLoss', 'takeProfit', 'quantity'];
+        for (const key of allowedKeys) {
+          if (customParams[key] !== undefined) {
+            allowedCustomParams[key] = customParams[key];
+          }
+        }
+      }
+
+      // Override execution params while preserving trusted signal identity/metadata
       const tradeParams = {
         ...signal.toObject(),
-        ...customParams
+        ...allowedCustomParams,
+        _id: signal._id
       };
 
       await this.executeAutoTrade(userId, tradeParams);

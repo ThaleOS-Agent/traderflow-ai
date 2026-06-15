@@ -224,7 +224,10 @@ export class EnsembleMasterStrategy {
    * Mean Reversion Signal
    */
   async generateMeanReversionSignal(symbol, marketData) {
-    const prices = marketData.prices || [];
+    const MAX_PRICE_POINTS = 1000;
+    const prices = Array.isArray(marketData?.prices)
+      ? marketData.prices.slice(-MAX_PRICE_POINTS)
+      : [];
     const price = marketData.currentPrice || 100;
     
     // Calculate RSI

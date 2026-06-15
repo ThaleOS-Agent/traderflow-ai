@@ -88,9 +88,20 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    if (
+      typeof email !== 'string' ||
+      typeof password !== 'string' ||
+      email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    ) {
+      return res.status(400).json({ error: 'Valid email and password required' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
     
     // Find user
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: { $eq: normalizedEmail } });
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }

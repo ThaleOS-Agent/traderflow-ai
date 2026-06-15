@@ -27,10 +27,26 @@ router.get('/profile', authenticateToken, async (req, res) => {
 router.put('/profile', authenticateToken, async (req, res) => {
   try {
     const { firstName, lastName, phone, country } = req.body;
-    
+
+    const isValidString = (value) => typeof value === 'string';
+    if (
+      !isValidString(firstName) ||
+      !isValidString(lastName) ||
+      !isValidString(phone) ||
+      !isValidString(country)
+    ) {
+      return res.status(400).json({ error: 'Invalid profile fields' });
+    }
+
     const user = await User.findByIdAndUpdate(
       req.userId,
-      { firstName, lastName, phone, country, updatedAt: new Date() },
+      {
+        firstName,
+        lastName,
+        phone,
+        country,
+        updatedAt: new Date()
+      },
       { new: true }
     );
     

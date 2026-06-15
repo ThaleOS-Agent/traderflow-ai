@@ -58,7 +58,11 @@ async function bridgePlaceOrder(payload) {
 }
 
 async function bridgeClosePosition(positionId) {
-  const { data } = await bridgeClient.delete(`/positions/${positionId}`);
+  const id = String(positionId || '');
+  if (!/^\d+$/.test(id)) {
+    throw new Error('Invalid position id');
+  }
+  const { data } = await bridgeClient.delete(`/positions/${encodeURIComponent(id)}`);
   return data;
 }
 

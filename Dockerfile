@@ -17,6 +17,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+# Copy root package.json (needed for npm start)
+COPY package*.json ./
+
 # Install backend dependencies
 COPY backend/package*.json ./backend/
 RUN cd backend && npm ci --no-audit --no-fund --omit=dev --ignore-scripts

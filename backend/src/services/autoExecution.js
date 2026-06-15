@@ -401,31 +401,43 @@ export class AutoExecutionEngine {
       return this.updateConfig(userId, newConfig);
     }
 
-    const normalizedConfig = { ...newConfig };
-
-    if (Array.isArray(normalizedConfig.exchanges)) {
-      normalizedConfig.exchanges = Array.from(new Set(
-        normalizedConfig.exchanges
-          .map(normalizeTradingVenue)
-          .filter(exchange => SUPPORTED_TRADING_VENUES.includes(exchange))
-      ));
-    }
-
-    if (Array.isArray(normalizedConfig.strategies)) {
-      normalizedConfig.strategies = Array.from(new Set(
-        normalizedConfig.strategies.map(normalizeStrategyName)
-      ));
+    const sanitizedConfig = {};
+    if (newConfig && typeof newConfig === 'object' && !Array.isArray(newConfig)) {
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'enabled')) {
+        sanitizedConfig.enabled = Boolean(newConfig.enabled);
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'paperTrading')) {
+        sanitizedConfig.paperTrading = Boolean(newConfig.paperTrading);
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'maxDailyTrades')) {
+        const maxDailyTrades = Number(newConfig.maxDailyTrades);
+        if (Number.isFinite(maxDailyTrades) && maxDailyTrades > 0) {
+          sanitizedConfig.maxDailyTrades = maxDailyTrades;
+        }
+      }
+      if (Array.isArray(newConfig.exchanges)) {
+        sanitizedConfig.exchanges = Array.from(new Set(
+          newConfig.exchanges
+            .map(normalizeTradingVenue)
+            .filter(exchange => SUPPORTED_TRADING_VENUES.includes(exchange))
+        ));
+      }
+      if (Array.isArray(newConfig.strategies)) {
+        sanitizedConfig.strategies = Array.from(new Set(
+          newConfig.strategies.map(normalizeStrategyName)
+        ));
+      }
     }
 
     engine.config = {
       ...engine.config,
-      ...normalizedConfig
+      ...sanitizedConfig
     };
 
     // Update user in database
     await User.findByIdAndUpdate(userId, {
-      'tradingSettings.autoTrading': engine.config.enabled,
-      'tradingSettings.paperTrading': engine.config.paperTrading
+      'tradingSettings.autoTrading': Boolean(engine.config.enabled),
+      'tradingSettings.paperTrading': Boolean(engine.config.paperTrading)
     });
 
     logger.info(`Auto-execution config updated for user ${userId}`);

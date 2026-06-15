@@ -23,9 +23,15 @@ function brokerAsset(assetType) {
 router.get('/', authenticateToken, async (req, res) => {
   try {
     const { status, limit = 50, page = 1 } = req.query;
+    const allowedStatuses = ['pending', 'open', 'closed', 'cancelled', 'failed'];
     
     const query = { userId: req.userId };
-    if (status) query.status = status;
+    if (status !== undefined) {
+      if (typeof status !== 'string' || !allowedStatuses.includes(status)) {
+        return res.status(400).json({ error: 'Invalid status filter' });
+      }
+      query.status = status;
+    }
     
     const trades = await Trade.find(query)
       .sort({ openedAt: -1 })

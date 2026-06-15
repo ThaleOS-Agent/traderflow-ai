@@ -6,9 +6,15 @@ import { Trade } from '../models/Trade.js';
 import { User } from '../models/User.js';
 import { getStrategy } from './strategies/index.js';
 import { ExchangeConnector } from './exchangeConnector.js';
+import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { RiskManager } from './riskManager.js';
 import { featureEngineering } from './featureEngineering.js';
 import { recalculatePortfolio } from '../utils/portfolio.js';
+import {
+  SUPPORTED_TRADING_VENUES,
+  normalizeStrategyName,
+  normalizeTradingVenue
+} from '../config/tradingVenues.js';
 
 export class TradingEngine {
   constructor(wss) {
@@ -57,17 +63,34 @@ export class TradingEngine {
         return false;
       }
 
-      // Create exchange connector
+      // Create exchange connectors for every supported venue. Paper trading can
+      // route to all venues immediately; live trading uses saved credentials.
       const isTestnet = user.tradingSettings?.paperTrading !== false;
-      const connector = new ExchangeConnector('binance', isTestnet);
-      
-      // Set API credentials if available
-      const binanceConfig = user.exchanges?.find(e => e.name === 'binance');
-      if (binanceConfig?.apiKey && binanceConfig?.apiSecret) {
-        connector.setCredentials(binanceConfig.apiKey, binanceConfig.apiSecret);
+      const connectors = new Map(
+        SUPPORTED_TRADING_VENUES.map(exchange => [
+          exchange,
+          new MultiExchangeConnector(exchange, isTestnet)
+        ])
+      );
+
+      for (const exchangeConfig of user.getDecryptedExchanges()) {
+        if (!exchangeConfig.isActive) continue;
+
+        const exchangeName = normalizeTradingVenue(exchangeConfig.name);
+        const connector = new MultiExchangeConnector(exchangeName, exchangeConfig.isTestnet);
+
+        if (exchangeConfig.apiKey) {
+          connector.setCredentials(
+            exchangeConfig.apiKey,
+            exchangeConfig.apiSecret || '',
+            exchangeConfig.passphrase
+          );
+        }
+
+        connectors.set(exchangeName, connector);
       }
       
-      this.exchangeConnectors.set(userId, connector);
+      this.exchangeConnectors.set(userId, connectors);
       
       // Create risk manager
       const riskManager = new RiskManager({
@@ -83,7 +106,9 @@ export class TradingEngine {
       this.userBots.set(userId, {
         autoTrading: user.tradingSettings?.autoTrading || false,
         paperTrading: user.tradingSettings?.paperTrading !== false,
-        defaultStrategy: user.tradingSettings?.defaultStrategy || 'quantum_ai',
+        defaultStrategy: user.tradingSettings?.defaultStrategy || 'all',
+        enabledStrategies: ['all'],
+        supportedExchanges: [...SUPPORTED_TRADING_VENUES],
         lastSignal: null
       });
       
@@ -231,8 +256,16 @@ export class TradingEngine {
     for (const [userId, botConfig] of this.userBots) {
       if (!botConfig.autoTrading) continue;
       
-      // Check if signal matches user's preferred strategy
-      if (signal.strategy !== botConfig.defaultStrategy && botConfig.defaultStrategy !== 'all') {
+      const signalStrategy = normalizeStrategyName(signal.strategy);
+      const enabledStrategies = botConfig.enabledStrategies || ['all'];
+      const defaultStrategy = normalizeStrategyName(botConfig.defaultStrategy || 'all');
+
+      // Default auto-trading behavior is all built-in strategies. If a future UI
+      // narrows enabledStrategies, this still honors that explicit selection.
+      if (!enabledStrategies.includes('all') &&
+          !enabledStrategies.includes(signalStrategy) &&
+          defaultStrategy !== 'all' &&
+          signalStrategy !== defaultStrategy) {
         continue;
       }
       
@@ -244,11 +277,11 @@ export class TradingEngine {
   // Execute auto-trade for a user
   async executeAutoTrade(userId, signal) {
     try {
-      const connector = this.exchangeConnectors.get(userId);
+      const connectors = this.exchangeConnectors.get(userId);
       const riskManager = this.riskManagers.get(userId);
       const botConfig = this.userBots.get(userId);
       
-      if (!connector || !riskManager) {
+      if (!riskManager || !botConfig) {
         logger.warn(`User ${userId} not properly registered for trading`);
         return;
       }
@@ -300,12 +333,20 @@ export class TradingEngine {
 
       // Execute trade
       const isPaperTrade = botConfig.paperTrading;
+      const exchangeName = normalizeTradingVenue(signal.exchange || signal.provider);
+      const connector = connectors?.get(exchangeName);
+
+      if (!isPaperTrade && (!connector || !connector.apiKey)) {
+        logger.warn(`Live exchange ${exchangeName} not configured for user ${userId}`);
+        return;
+      }
       
       let orderResult;
       if (isPaperTrade) {
-        orderResult = await connector.simulateOrder({
+        orderResult = await this.simulatePaperOrder({
           symbol: signal.symbol,
           side: signal.side,
+          exchange: exchangeName,
           quantity,
           entryPrice: signal.entryPrice,
           stopLoss: signal.stopLoss,
@@ -335,6 +376,7 @@ export class TradingEngine {
         quantity,
         status: 'open',
         exchangeOrderId: orderResult.orderId,
+        exchange: exchangeName,
         strategy: signal.strategy,
         isAutoTrade: true,
         isPaperTrade
@@ -379,11 +421,31 @@ export class TradingEngine {
         portfolio
       });
 
-      logger.info(`Auto-trade executed for user ${userId}: ${signal.symbol} ${signal.side}`);
+      logger.info(`Auto-trade executed for user ${userId}: ${signal.symbol} ${signal.side} on ${exchangeName}`);
 
     } catch (error) {
       logger.error(`Error executing auto-trade for user ${userId}:`, error);
     }
+  }
+
+  simulatePaperOrder(orderParams) {
+    const { symbol, side, exchange, quantity, entryPrice, stopLoss, takeProfit } = orderParams;
+    const slippage = (Math.random() * 0.002 - 0.001);
+    const executedPrice = entryPrice * (1 + slippage);
+
+    return {
+      orderId: `PAPER_${exchange}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      symbol,
+      side,
+      exchange,
+      quantity,
+      price: executedPrice,
+      status: 'FILLED',
+      paperTrade: true,
+      stopLoss,
+      takeProfit,
+      executedAt: new Date().toISOString()
+    };
   }
 
   // Start auto-trading monitor

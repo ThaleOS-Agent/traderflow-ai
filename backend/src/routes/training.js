@@ -207,7 +207,11 @@ router.post('/generate-signal', authenticate, async (req, res) => {
       });
 
       tradingEngine.broadcast('newSignal', savedSignal.toJSON());
-      await tradingEngine.checkAutoTrading(savedSignal.toObject());
+      if (tradingEngine.agentOrchestrator) {
+        await tradingEngine.agentOrchestrator.processSignal(savedSignal.toObject(), 'training.generate-signal');
+      } else {
+        await tradingEngine.checkAutoTrading(savedSignal.toObject());
+      }
     }
     
     res.json({

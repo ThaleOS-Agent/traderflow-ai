@@ -158,6 +158,10 @@ export class TradingEngine {
       timestamp: Date.now(),
       pairs: Array.from(this.marketData.keys())
     });
+    this.agentOrchestrator?.recordMarketData?.({
+      timestamp: Date.now(),
+      pairs: Array.from(this.marketData.keys())
+    }, 'trading_engine');
   }
 
   // Start signal generation
@@ -202,13 +206,16 @@ export class TradingEngine {
               volatility: enhancedData.volatility
             };
             
-            await this.saveSignal(signal);
+            const savedSignal = await this.saveSignal(signal);
             
             // Broadcast new signal
-            this.broadcast('newSignal', signal);
+            this.broadcast('newSignal', savedSignal?.toJSON?.() || signal);
             
-            // Check for auto-trading
-            await this.checkAutoTrading(signal);
+            if (this.agentOrchestrator) {
+              await this.agentOrchestrator.processSignal(savedSignal?.toObject?.() || signal, 'trading_engine');
+            } else {
+              await this.checkAutoTrading(savedSignal?.toObject?.() || signal);
+            }
             
             logger.info(`Signal generated: ${symbol} ${signal.side} (${strategyName}, confidence: ${signal.confidenceScore}%)`);
             
@@ -448,6 +455,7 @@ export class TradingEngine {
         userId,
         portfolio
       });
+      this.agentOrchestrator?.recordExecution?.(trade.toJSON(), 'trading_engine');
 
       logger.info(`Auto-trade executed for user ${userId}: ${signal.symbol} ${signal.side} on ${exchangeName}`);
 

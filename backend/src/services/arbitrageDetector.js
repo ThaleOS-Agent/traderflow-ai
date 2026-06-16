@@ -324,6 +324,9 @@ export class ArbitrageDetector {
         
         // Broadcast new opportunity
         this.broadcast('arbitrageOpportunity', opp);
+        if (this.agentOrchestrator) {
+          await this.agentOrchestrator.processArbitrageOpportunity(opp, 'arbitrage_detector');
+        }
         logger.info(`Arbitrage: ${opp.symbol} - Buy on ${opp.buyExchange} @ $${opp.buyPrice.toFixed(4)}, Sell on ${opp.sellExchange} @ $${opp.sellPrice.toFixed(4)} = ${opp.netProfit}% profit`);
       }
     }

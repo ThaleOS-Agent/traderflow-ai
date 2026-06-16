@@ -136,20 +136,43 @@ Status: `Ready for next audit gate`. Production AI-learning actions, signal pers
 
 Status: `Ready for next audit gate`. Production cross-asset feed coverage, WebSocket subscriptions, market events, and polling fallback data sources are verified.
 
-### 6. WalletConnect And Wallet Auth
+### 6. Multi-Agent Orchestration
+
+- Verify every autonomous bot role is registered with a clear role and capability list:
+  market scanner, pattern scanner, arbitrage detector, ML predictor, ensemble master, advanced risk manager, trading engine, and auto-execution engine.
+- Verify scanner, pattern, arbitrage, and ML/generated signal outputs are ingested into one shared agent context.
+- Verify tradeable opportunities are routed through one shared advanced risk decision before execution.
+- Verify approved opportunities dispatch through the canonical auto-execution engine rather than separate direct execution paths.
+- Verify rejected risk decisions are persisted in the shared orchestration event trail and do not place orders.
+- Verify `/api/agents/status`, `/api/agents/events`, and `/api/agents/context` return authenticated shared state for audit and dashboard use.
+- Verify `agentOrchestratorUpdate` WebSocket events publish orchestration state changes to connected dashboards.
+
+#### Code Evidence - 2026-06-16
+
+- [agentOrchestrator.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/agentOrchestrator.js) registers the bot roles, stores shared market/opportunity/pattern/arbitrage/signal/risk/execution context, and broadcasts `agentOrchestratorUpdate`.
+- [server.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/server.js) initializes the orchestrator before scheduled scanners start and injects it into `TradingEngine`, `PatternScanner`, `assetScanner`, `arbitrageDetector`, `AutoExecutionEngine`, and `AdvancedRiskManager`.
+- [assetScanner.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/assetScanner.js), [patternScanner.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/patternScanner.js), and [arbitrageDetector.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/arbitrageDetector.js) now report newly detected actionable outputs into the orchestrator.
+- [tradingEngine.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/tradingEngine.js) routes scheduled generated signals through the orchestrator instead of a separate direct auto-trading path when the orchestrator is available.
+- [training.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/training.js) routes manually generated AI learning signals through the same orchestrator path.
+- [autoExecution.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/autoExecution.js) exposes a pre-trade execution plan for shared advanced-risk approval and remains the canonical order dispatcher for approved opportunities.
+- [agents.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/agents.js) exposes authenticated orchestration status, event, and shared-context endpoints.
+
+Status: `Implemented locally`. Runtime verification against Railway is required before this gate can be marked ready.
+
+### 7. WalletConnect And Wallet Auth
 
 - Verify WalletConnect session creation returns a URI, message, and expiry.
 - Verify session polling works and expires cleanly.
 - Verify MetaMask signing still verifies wallet ownership when available.
 - Verify wallet founder mapping upgrades role, tier, subscription status, and feature set.
 
-### 7. Database And Logs
+### 8. Database And Logs
 
 - Verify Mongo collections exist and contain expected documents for users, exchanges, trades, signals, subscriptions, wallets, notifications, and training output.
 - Verify generated runtime logs remain ignored and are not committed.
 - Verify no historical user IDs, wallet addresses, trade activity, API keys, or broker credentials are tracked in git.
 
-### 8. Security And Production Controls
+### 9. Security And Production Controls
 
 - Verify rate limiting does not block normal dashboard boot and endpoint polling.
 - Verify CORS, Helmet/security headers, JWT expiry, role checks, and error responses in Railway.
@@ -157,7 +180,7 @@ Status: `Ready for next audit gate`. Production cross-asset feed coverage, WebSo
 - Verify exchange API keys are trading-only, withdrawal-disabled, and IP-restricted where supported.
 - Verify emergency stop/risk reset routes require founder/admin access.
 
-### 9. CI/CD And Railway
+### 10. CI/CD And Railway
 
 - Verify PR checks pass: build, validation, and CodeQL.
 - Verify merge/deploy workflow deploys only from the intended branch/event.

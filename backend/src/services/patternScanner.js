@@ -125,6 +125,9 @@ export class PatternScanner {
     
     // Broadcast to connected clients
     this.broadcast('patternDetected', patternData);
+    if (this.agentOrchestrator) {
+      await this.agentOrchestrator.processPattern(patternData, 'pattern_scanner');
+    }
     
     logger.info(`Pattern detected: ${pattern.pattern} ${pattern.direction} on ${symbol} (${timeframe}) - Confidence: ${pattern.confidence.toFixed(1)}%`);
   }

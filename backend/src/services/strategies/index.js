@@ -15,7 +15,13 @@ export const strategies = {
 };
 
 export function getStrategy(name) {
-  const Strategy = strategies[name] || strategies.xq_trade_m8;
+  const hasValidStrategy = Object.prototype.hasOwnProperty.call(strategies, name);
+  const Strategy = hasValidStrategy ? strategies[name] : strategies.xq_trade_m8;
+
+  if (typeof Strategy !== 'function') {
+    return new strategies.xq_trade_m8();
+  }
+
   return new Strategy();
 }
 

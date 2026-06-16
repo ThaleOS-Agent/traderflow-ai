@@ -301,15 +301,17 @@ Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-
 #### Verification Evidence - 2026-06-16
 
 - Local verification for the current branch passed `node --check` for the changed backend orchestration files and `npm run build`.
-- GitHub PR #27 reported successful checks before its merged state: `CI/CD / Build and Validate`, `CodeQL / Analyze (actions)`, `CodeQL / Analyze (javascript-typescript)`, `Docker Image CI / build`, and `Frontend Build / build`.
-- Current `codex-cicd-setup` remains ahead of `origin/main`; production deployment below was performed directly from the linked local branch using Railway CLI. Main-branch CI/CD promotion remains required before final go-live classification.
+- GitHub PR #28 is open for `codex-production-readiness-followup` into `main` and reported `mergeStateStatus=CLEAN`.
+- GitHub PR #28 checks passed: `CI/CD / Build and Validate`, `Docker Image CI / build`, and `Frontend Build / build`.
+- No checked-in CodeQL workflow exists in `.github/workflows`; previous CodeQL evidence came from repository-level code scanning rather than this branch's workflow files.
+- Current production deployment below was performed directly from the linked local branch using Railway CLI. Main-branch merge and post-merge Railway workflow verification remain required before final go-live classification.
 - Railway deployment `7109312c-34ca-4d6c-ba03-df0f7667a3d7` completed successfully for commit `d5033477`.
 - Production `GET /api/health` returned `200` after deploy and, after startup agents settled, reported `tradingEngine=running`, `patternScanner=running`, `assetScanner=running`, `agentOrchestrator=initialized`, `arbitrageDetector=running`, `mlPredictor=initialized`, `dexIntegration=initialized`, and `advancedRiskManager=initialized`.
 - Production landing page `/` returned `200 text/html; charset=UTF-8`.
 - Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
 - Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
 
-Status: `Partial`. Railway production is online with the current branch deployment and core runtime checks pass. Final go-live CI/CD readiness is not complete until the branch commits are merged/promoted through the intended `main` workflow and the post-merge Railway deploy is verified.
+Status: `Partial`. PR #28 validation is clean and Railway production is online with the current branch deployment. Final go-live CI/CD readiness is not complete until PR #28 is merged to `main` and the post-merge Railway deploy workflow is verified.
 
 ## First Live Trade Runbook
 

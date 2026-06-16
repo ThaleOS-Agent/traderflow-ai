@@ -178,7 +178,7 @@ router.post('/generate-signal', authenticate, async (req, res) => {
     const rawSignal = await ensembleMaster.generateEnsembleSignal(normalizedSymbol, enrichedMarketData);
     const side = rawSignal.action === 'sell' ? 'sell' : 'buy';
     const entryPrice = enrichedMarketData.currentPrice;
-    const confidenceScore = Math.max(70, Math.round((rawSignal.confidence || 0.75) * 100));
+    const confidenceScore = Math.max(75, Math.round((rawSignal.confidence || 0.75) * 100));
     const signal = {
       symbol: normalizedSymbol,
       assetType,

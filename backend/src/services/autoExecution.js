@@ -31,7 +31,7 @@ export class AutoExecutionEngine {
       maxDailyTrades: 10,
       maxConcurrentPositions: 5,
       positionSizePercent: 10, // % of available balance per trade
-      strategies: ['xq_trade_m8', 'quantum_ai', 'crypto_bot', 'harmonic', 'breakout', 'volume_spike'],
+      strategies: ['ensemble_master', 'xq_trade_m8', 'quantum_ai', 'crypto_bot', 'harmonic', 'breakout', 'volume_spike'],
       exchanges: [...SUPPORTED_TRADING_VENUES],
       autoClose: true, // Auto close on target/SL
       trailingStop: false

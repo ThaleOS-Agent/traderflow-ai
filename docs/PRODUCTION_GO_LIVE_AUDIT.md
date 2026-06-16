@@ -87,8 +87,9 @@ Status: `Partial`. Code paths and dashboard surface are aligned, but live local 
 - Trade list returned the newly created order immediately after create.
 - Direct WebSocket event delivery was not reliable while Railway app replicas were set to `2` because broadcasts are in-memory per instance.
 - Railway deployment config was reduced to `1` replica until shared pub/sub fanout is implemented so order, trade, and portfolio events stay coherent for connected dashboards.
+- After the single-replica Railway deploy, production WebSocket verification showed `tradeExecuted`, `orderExecuted`, `portfolio_update`, and `tradeClosed` arriving during the same authenticated session that created and closed a paper trade.
 
-Status: `Ready for production paper-order verification after single-replica deploy`. Persistence and portfolio math are verified in production. Final gate-3 signoff still requires re-running the live WebSocket create/close check after the single-replica deployment is active.
+Status: `Ready for next audit gate`. Production paper-order persistence, portfolio math, trade stats, and live WebSocket event delivery are verified.
 
 ### 4. Signals, Auto-Trading, And AI Learning
 

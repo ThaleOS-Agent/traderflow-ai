@@ -231,10 +231,16 @@ app.get('/api/health', (req, res) => {
 
 // Serve frontend static files in production
 const frontendDist = join(__dirname, '../../dist');
+const spaFallbackLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // limit repeated SPA fallback hits per IP
+  standardHeaders: true,
+  legacyHeaders: false
+});
 if (process.env.NODE_ENV === 'production' && existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
   // SPA fallback — serve index.html for all non-API routes
-  app.get('*', (req, res, next) => {
+  app.get('*', spaFallbackLimiter, (req, res, next) => {
     if (req.path.startsWith('/api') || req.path.startsWith('/ws')) return next();
     res.sendFile(join(frontendDist, 'index.html'));
   });

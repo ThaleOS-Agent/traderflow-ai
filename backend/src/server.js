@@ -57,6 +57,7 @@ import walletRoutes from './routes/wallet.js';
 import forexRoutes from './routes/forex.js';
 import mt5Routes from './routes/mt5.js';
 import agentRoutes from './routes/agents.js';
+import auditRoutes from './routes/audit.js';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -203,6 +204,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/forex', forexRoutes);
 app.use('/api/mt5', mt5Routes);
 app.use('/api/agents', agentRoutes);
+app.use('/api/audit', auditRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {

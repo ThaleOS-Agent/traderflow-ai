@@ -96,6 +96,15 @@ fi
 if [[ "$MODE" == "railway" ]]; then
   command -v railway >/dev/null 2>&1 || fail "Railway CLI not found. Install: npm i -g @railway/cli"
 
+  if ! railway whoami >/dev/null 2>&1; then
+    fail "Railway CLI is not authenticated. Run: railway login"
+  fi
+
+  if ! grep -q '^MONGODB_URI=' .env 2>/dev/null; then
+    warn "MONGODB_URI is not set in .env."
+    warn "If Railway will host MongoDB, run: bash scripts/setup-railway-mongo.sh"
+  fi
+
   log "Deploying to Railway…"
   railway up
   ok "Deployed to Railway!"

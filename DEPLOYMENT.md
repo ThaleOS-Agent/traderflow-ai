@@ -6,6 +6,17 @@ This app is a full-stack service: Vite builds the frontend, and the Express back
 
 Use Railway with the included `Dockerfile` and `railway.json`.
 
+Current production target:
+
+```text
+Project: Tradeflow AI
+Project ID: e53a768b-f8f8-4336-829c-6863c8b88d63
+Environment: production
+App service: traderflow-ai
+MongoDB service: MongoDB
+URL: https://traderflow-ai-production.up.railway.app
+```
+
 Required Railway service variables:
 
 ```text
@@ -22,9 +33,9 @@ If you want Railway to host MongoDB for this app, use the included helper after 
 
 ```bash
 railway login
-RAILWAY_PROJECT_ID=<project-id> \
+RAILWAY_PROJECT_ID=e53a768b-f8f8-4336-829c-6863c8b88d63 \
 RAILWAY_APP_SERVICE=traderflow-ai \
-RAILWAY_MONGO_SERVICE=mongodb \
+RAILWAY_MONGO_SERVICE=MongoDB \
 bash scripts/setup-railway-mongo.sh
 ```
 

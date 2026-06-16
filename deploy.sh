@@ -21,6 +21,10 @@ MODE="docker"
 [[ "${1:-}" == "--railway" ]]    && MODE="railway"
 [[ "${1:-}" == "--build-only" ]] && MODE="build"
 
+RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-e53a768b-f8f8-4336-829c-6863c8b88d63}"
+RAILWAY_APP_SERVICE="${RAILWAY_APP_SERVICE:-traderflow-ai}"
+RAILWAY_ENVIRONMENT="${RAILWAY_ENVIRONMENT:-production}"
+
 # ── Pre-flight checks ──────────────────────────────────────────────────────
 
 log "TradeFlow AI deployment starting (mode: $MODE)"
@@ -106,7 +110,14 @@ if [[ "$MODE" == "railway" ]]; then
   fi
 
   log "Deploying to Railway…"
-  railway up
+  railway link \
+    --project "$RAILWAY_PROJECT_ID" \
+    --service "$RAILWAY_APP_SERVICE" \
+    --environment "$RAILWAY_ENVIRONMENT" >/dev/null
+  railway up \
+    --project "$RAILWAY_PROJECT_ID" \
+    --service "$RAILWAY_APP_SERVICE" \
+    --environment "$RAILWAY_ENVIRONMENT"
   ok "Deployed to Railway!"
   log "Check status: railway status"
   exit 0

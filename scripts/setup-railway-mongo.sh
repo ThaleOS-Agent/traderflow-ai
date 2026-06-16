@@ -13,8 +13,8 @@ warn() { echo -e "${YELLOW}[!]${NC} $*"; }
 fail() { echo -e "${RED}[✗]${NC} $*"; exit 1; }
 
 APP_SERVICE="${RAILWAY_APP_SERVICE:-traderflow-ai}"
-MONGO_SERVICE="${RAILWAY_MONGO_SERVICE:-mongodb}"
-PROJECT_ID="${RAILWAY_PROJECT_ID:-}"
+MONGO_SERVICE="${RAILWAY_MONGO_SERVICE:-MongoDB}"
+PROJECT_ID="${RAILWAY_PROJECT_ID:-e53a768b-f8f8-4336-829c-6863c8b88d63}"
 ENVIRONMENT="${RAILWAY_ENVIRONMENT:-production}"
 
 command -v railway >/dev/null 2>&1 || fail "Railway CLI not found. Install with: npm i -g @railway/cli"
@@ -26,7 +26,7 @@ fi
 
 log "Ensuring Railway project context is available..."
 if [[ -n "$PROJECT_ID" ]]; then
-  railway link --project "$PROJECT_ID" --environment "$ENVIRONMENT" >/dev/null 2>&1 || true
+  railway link --project "$PROJECT_ID" --service "$APP_SERVICE" --environment "$ENVIRONMENT" >/dev/null 2>&1 || true
   ok "Linked project context using RAILWAY_PROJECT_ID."
 else
   railway status >/dev/null 2>&1 || fail "No linked Railway project. Run: railway link --project <project-id> --environment $ENVIRONMENT"

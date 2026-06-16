@@ -50,6 +50,13 @@ const FEATURE_TIERS = {
  */
 const TIER_HIERARCHY = ['free', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'founder'];
 
+function getEffectiveTier(user) {
+  if (user?.role === 'founder' || user?.isFounder === true || user?.subscription?.tier === 'founder') {
+    return 'founder';
+  }
+  return user?.subscription?.tier || 'free';
+}
+
 /**
  * Check if user has access to a feature
  */
@@ -95,7 +102,7 @@ export function requireFeature(feature) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       
       // Check if user has access
       if (hasFeatureAccess(userTier, feature)) {
@@ -153,7 +160,7 @@ export function requireTier(minTier) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
       const minTierIndex = TIER_HIERARCHY.indexOf(minTier);
       
@@ -197,7 +204,7 @@ export function requireStrategyAccess(strategyName) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       const maxStrategies = walletConnectService.subscriptionTiers[userTier]?.maxStrategies || 2;
       
       // Check if user can use this strategy
@@ -248,7 +255,7 @@ export function tierRateLimit() {
   return (req, res, next) => {
     try {
       const user = req.user;
-      const userTier = user?.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       
       // Get tier limits
       const tierConfig = walletConnectService.subscriptionTiers[userTier];
@@ -283,7 +290,7 @@ export function requireFounder(req, res, next) {
       });
     }
     
-    if (!user.isFounder && user.subscription?.tier !== 'founder') {
+    if (getEffectiveTier(user) !== 'founder') {
       return res.status(403).json({
         success: false,
         error: 'Founder access required',

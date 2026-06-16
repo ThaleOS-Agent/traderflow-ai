@@ -614,8 +614,10 @@ export class TradingEngine {
       user.tradingSettings.autoTrading = enabled;
       await user.save();
 
-      // Update local cache
-      if (this.userBots.has(userId)) {
+      // Keep the in-memory execution registry aligned with the persisted user setting.
+      if (!this.userBots.has(userId)) {
+        await this.registerUser(userId);
+      } else {
         this.userBots.get(userId).autoTrading = enabled;
       }
 

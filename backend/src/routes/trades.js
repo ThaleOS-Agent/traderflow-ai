@@ -7,11 +7,16 @@ import { tradingEngine } from '../server.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { metatraderAccountService } from '../services/metatraderAccountService.js';
 import { recalculatePortfolio, toObjectId } from '../utils/portfolio.js';
+import { isSupportedTradingVenue, normalizeTradingVenue } from '../config/tradingVenues.js';
 
 const router = express.Router();
 
-function activeExchange(user) {
+function activeExchange(user, requestedExchange) {
   const exchanges = user.getDecryptedExchanges?.() || [];
+  if (requestedExchange) {
+    const exchangeName = normalizeTradingVenue(requestedExchange);
+    return exchanges.find(exchange => exchange.name === exchangeName && exchange.isActive) || null;
+  }
   return exchanges.find(exchange => exchange.isActive) || exchanges[0] || null;
 }
 
@@ -144,7 +149,8 @@ router.post('/', authenticateToken, async (req, res) => {
       stopLoss,
       takeProfit,
       orderType = 'market',
-      isPaperTrade
+      isPaperTrade,
+      exchange: requestedExchange
     } = req.body;
     
     const user = await User.findById(req.userId);
@@ -154,6 +160,11 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const paperTrade = isPaperTrade !== false || user.tradingSettings?.paperTrading !== false;
     let execution = null;
+    const exchangeName = brokerAsset(assetType) ? 'metatrader' : normalizeTradingVenue(requestedExchange);
+
+    if (!brokerAsset(assetType) && requestedExchange && !isSupportedTradingVenue(requestedExchange)) {
+      return res.status(400).json({ error: 'Unsupported exchange or broker' });
+    }
 
     if (!paperTrade) {
       if (brokerAsset(assetType)) {
@@ -169,9 +180,9 @@ router.post('/', authenticateToken, async (req, res) => {
           comment: 'TradeFlow manual trade'
         });
       } else {
-        const exchange = activeExchange(user);
+        const exchange = activeExchange(user, exchangeName);
         if (!exchange) {
-          return res.status(400).json({ error: 'Live crypto/stock execution requires a saved exchange connection' });
+          return res.status(400).json({ error: `Live crypto/stock execution requires a saved ${exchangeName} connection` });
         }
 
         const connector = new MultiExchangeConnector(exchange.name, exchange.isTestnet);
@@ -198,7 +209,7 @@ router.post('/', authenticateToken, async (req, res) => {
       takeProfit,
       status: paperTrade || execution ? 'open' : 'pending',
       orderType,
-      exchange: brokerAsset(assetType) ? 'metatrader' : activeExchange(user)?.name || 'paper',
+      exchange: paperTrade ? exchangeName : (brokerAsset(assetType) ? 'metatrader' : exchangeName),
       exchangeOrderId: execution?.orderId || execution?.orderId?.toString?.() || execution?.id || execution?.orderFillTransaction?.id || null,
       isAutoTrade: false,
       isPaperTrade: paperTrade,
@@ -262,9 +273,9 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
         }
         closeExecution = await metatraderAccountService.closePosition(user, req.body.metatraderAccountId, trade.exchangeOrderId);
       } else {
-        const exchange = activeExchange(user);
+        const exchange = activeExchange(user, trade.exchange);
         if (!exchange) {
-          return res.status(400).json({ error: 'Live close requires an active exchange connection' });
+          return res.status(400).json({ error: `Live close requires an active ${trade.exchange} connection` });
         }
 
         const connector = new MultiExchangeConnector(exchange.name, exchange.isTestnet);

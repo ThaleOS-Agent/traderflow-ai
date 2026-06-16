@@ -74,6 +74,25 @@ export class WalletConnectService {
         maxStrategies: 100,
         maxPositions: 500,
         apiCallsPerDay: 500000
+      },
+      founder: {
+        name: 'Founder',
+        price: 0,
+        features: [
+          'all_features',
+          'live_trading',
+          'paper_trading',
+          'all_strategies',
+          'ensemble_master',
+          'ml_predictions',
+          'dex_integration',
+          'api_access',
+          'white_glove_service',
+          'founder_controls'
+        ],
+        maxStrategies: Number.MAX_SAFE_INTEGER,
+        maxPositions: Number.MAX_SAFE_INTEGER,
+        apiCallsPerDay: Number.MAX_SAFE_INTEGER
       }
     };
     

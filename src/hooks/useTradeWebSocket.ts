@@ -74,6 +74,7 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelay = useRef(1000);
   const mountedRef = useRef(true);
+  const connectRef = useRef<() => void>(() => {});
 
   const [status, setStatus] = useState<WsStatus>('disconnected');
   const [lastEvent, setLastEvent] = useState<string | null>(null);
@@ -167,7 +168,7 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
       // Exponential backoff reconnect (cap at 30s)
       const delay = Math.min(reconnectDelay.current, 30000);
       reconnectDelay.current = delay * 2;
-      reconnectTimer.current = setTimeout(connect, delay);
+      reconnectTimer.current = setTimeout(() => connectRef.current(), delay);
     };
 
     ws.onerror = () => {
@@ -176,10 +177,15 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
   }, [onSignal, onTrade, onOrder, onMarketData, onPortfolioUpdate, onEvent]);
 
   useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
+  useEffect(() => {
     mountedRef.current = true;
-    connect();
+    const initialConnectTimer = setTimeout(() => connectRef.current(), 0);
     return () => {
       mountedRef.current = false;
+      clearTimeout(initialConnectTimer);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };

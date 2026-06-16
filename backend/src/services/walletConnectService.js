@@ -369,6 +369,27 @@ export class WalletConnectService {
       if (!user) {
         throw new Error('User not found');
       }
+
+      if (user.role === 'founder' || user.isFounder === true || user.subscription?.tier === 'founder') {
+        user.subscription = {
+          tier: 'founder',
+          status: 'lifetime',
+          startedAt: user.subscription?.startedAt || new Date(),
+          expiresAt: null,
+          paymentMethod: user.subscription?.paymentMethod || 'founder',
+          txHash: user.subscription?.txHash || null
+        };
+        user.isFounder = true;
+        user.role = 'founder';
+        await user.save();
+
+        return {
+          success: true,
+          tier: 'founder',
+          features: this.getTierFeatures('founder'),
+          expiresAt: null
+        };
+      }
       
       const tierConfig = this.subscriptionTiers[newTier];
       if (!tierConfig) {

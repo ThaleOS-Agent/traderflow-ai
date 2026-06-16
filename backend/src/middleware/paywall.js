@@ -57,6 +57,15 @@ function getEffectiveTier(user) {
   return user?.subscription?.tier || 'free';
 }
 
+function hasTierAccess(userTier, requiredTier) {
+  if (userTier === 'founder') return true;
+
+  const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
+  const requiredTierIndex = TIER_HIERARCHY.indexOf(requiredTier);
+
+  return userTierIndex >= 0 && requiredTierIndex >= 0 && userTierIndex >= requiredTierIndex;
+}
+
 /**
  * Check if user has access to a feature
  */
@@ -72,10 +81,7 @@ export function hasFeatureAccess(userTier, feature) {
     return false;
   }
   
-  const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
-  const requiredTierIndex = TIER_HIERARCHY.indexOf(requiredTier);
-  
-  return userTierIndex >= requiredTierIndex;
+  return hasTierAccess(userTier, requiredTier);
 }
 
 /**
@@ -161,11 +167,8 @@ export function requireTier(minTier) {
       }
       
       const userTier = getEffectiveTier(user);
-      const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
-      const minTierIndex = TIER_HIERARCHY.indexOf(minTier);
-      
       // Founder always has access
-      if (userTier === 'founder' || userTierIndex >= minTierIndex) {
+      if (hasTierAccess(userTier, minTier)) {
         req.userTier = userTier;
         return next();
       }
@@ -223,7 +226,7 @@ export function requireStrategyAccess(strategyName) {
       
       const requiredTier = strategyTiers[strategyName] || 'free';
       
-      if (hasFeatureAccess(userTier, requiredTier)) {
+      if (hasTierAccess(userTier, requiredTier)) {
         req.userTier = userTier;
         req.maxStrategies = maxStrategies;
         return next();
@@ -312,6 +315,7 @@ export function requireFounder(req, res, next) {
 
 export default {
   hasFeatureAccess,
+  hasTierAccess,
   getRequiredTier,
   requireFeature,
   requireTier,

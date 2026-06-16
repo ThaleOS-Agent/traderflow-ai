@@ -19,6 +19,25 @@ This audit uses the Trade-M8 reference reports as a pattern, but keeps TraderFlo
 - Verify non-founder users still receive expected paywall restrictions.
 - Verify no secrets or tokens are emitted in frontend errors, backend logs, or CI output.
 
+#### Local Evidence - 2026-06-16
+
+- Docker app rebuilt successfully with current branch code.
+- `GET /api/health` returned `200`.
+- Founder login through `/api/auth/login` returned `200` with role `founder`, tier `founder`, and founder flag enabled.
+- Demo login through `/api/auth/login` returned `200` with role `user`, tier `gold`, and founder flag disabled.
+- Founder `/api/wallet/subscription` returned tier `founder`.
+- Demo `/api/wallet/subscription` returned tier `gold`.
+- Founder `/api/wallet/features` returned tier `founder`.
+- Founder `/api/training/start` returned `200`.
+- Demo `/api/training/start` returned `403`.
+- Founder no-op `POST /api/risk/limits` returned `200`.
+- Demo no-op `POST /api/risk/limits` returned `403`.
+- Founder `/api/wallet/founder/dashboard` returned `200` with full access.
+- Demo `/api/wallet/founder/dashboard` returned `403` with `FOUNDER_REQUIRED`.
+- Smoke test output did not print JWTs, passwords, API keys, or broker credentials.
+
+Status: `Ready for next audit gate` locally. Railway verification remains part of gate 9.
+
 ### 2. Exchange And Broker Connections
 
 - Verify `/api/exchange/connections` returns every supported TraderFlow venue:

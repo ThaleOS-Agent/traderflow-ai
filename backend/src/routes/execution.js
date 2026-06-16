@@ -1,7 +1,7 @@
 import express from 'express';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
-import { autoExecution } from '../server.js';
+import { autoExecution } from '../services/autoExecution.js';
 
 const router = express.Router();
 

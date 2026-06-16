@@ -50,6 +50,22 @@ const FEATURE_TIERS = {
  */
 const TIER_HIERARCHY = ['free', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'founder'];
 
+function getEffectiveTier(user) {
+  if (user?.role === 'founder' || user?.isFounder === true || user?.subscription?.tier === 'founder') {
+    return 'founder';
+  }
+  return user?.subscription?.tier || 'free';
+}
+
+function hasTierAccess(userTier, requiredTier) {
+  if (userTier === 'founder') return true;
+
+  const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
+  const requiredTierIndex = TIER_HIERARCHY.indexOf(requiredTier);
+
+  return userTierIndex >= 0 && requiredTierIndex >= 0 && userTierIndex >= requiredTierIndex;
+}
+
 /**
  * Check if user has access to a feature
  */
@@ -65,10 +81,7 @@ export function hasFeatureAccess(userTier, feature) {
     return false;
   }
   
-  const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
-  const requiredTierIndex = TIER_HIERARCHY.indexOf(requiredTier);
-  
-  return userTierIndex >= requiredTierIndex;
+  return hasTierAccess(userTier, requiredTier);
 }
 
 /**
@@ -95,7 +108,7 @@ export function requireFeature(feature) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       
       // Check if user has access
       if (hasFeatureAccess(userTier, feature)) {
@@ -153,12 +166,9 @@ export function requireTier(minTier) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
-      const userTierIndex = TIER_HIERARCHY.indexOf(userTier);
-      const minTierIndex = TIER_HIERARCHY.indexOf(minTier);
-      
+      const userTier = getEffectiveTier(user);
       // Founder always has access
-      if (userTier === 'founder' || userTierIndex >= minTierIndex) {
+      if (hasTierAccess(userTier, minTier)) {
         req.userTier = userTier;
         return next();
       }
@@ -197,7 +207,7 @@ export function requireStrategyAccess(strategyName) {
         });
       }
       
-      const userTier = user.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       const maxStrategies = walletConnectService.subscriptionTiers[userTier]?.maxStrategies || 2;
       
       // Check if user can use this strategy
@@ -216,7 +226,7 @@ export function requireStrategyAccess(strategyName) {
       
       const requiredTier = strategyTiers[strategyName] || 'free';
       
-      if (hasFeatureAccess(userTier, requiredTier)) {
+      if (hasTierAccess(userTier, requiredTier)) {
         req.userTier = userTier;
         req.maxStrategies = maxStrategies;
         return next();
@@ -248,7 +258,7 @@ export function tierRateLimit() {
   return (req, res, next) => {
     try {
       const user = req.user;
-      const userTier = user?.subscription?.tier || 'free';
+      const userTier = getEffectiveTier(user);
       
       // Get tier limits
       const tierConfig = walletConnectService.subscriptionTiers[userTier];
@@ -283,7 +293,7 @@ export function requireFounder(req, res, next) {
       });
     }
     
-    if (!user.isFounder && user.subscription?.tier !== 'founder') {
+    if (getEffectiveTier(user) !== 'founder') {
       return res.status(403).json({
         success: false,
         error: 'Founder access required',
@@ -305,6 +315,7 @@ export function requireFounder(req, res, next) {
 
 export default {
   hasFeatureAccess,
+  hasTierAccess,
   getRequiredTier,
   requireFeature,
   requireTier,

@@ -5,6 +5,13 @@ import { requireFeature, requireTier, requireFounder } from '../middleware/paywa
 
 const router = express.Router();
 
+function getEffectiveTier(user) {
+  if (user?.role === 'founder' || user?.isFounder === true || user?.subscription?.tier === 'founder') {
+    return 'founder';
+  }
+  return user?.subscription?.tier || 'free';
+}
+
 /**
  * @route POST /api/wallet/connect
  * @desc Create a new WalletConnect session
@@ -170,15 +177,16 @@ router.get('/tiers', async (req, res) => {
 router.get('/subscription', authenticate, async (req, res) => {
   try {
     const user = req.user;
+    const tier = getEffectiveTier(user);
     
     res.json({
       success: true,
       subscription: {
-        tier: user.subscription?.tier || 'free',
-        status: user.subscription?.status || 'active',
-        expiresAt: user.subscription?.expiresAt,
-        isFounder: user.isFounder || false,
-        features: walletConnectService.getTierFeatures(user.subscription?.tier || 'free')
+        tier,
+        status: tier === 'founder' ? 'lifetime' : (user.subscription?.status || 'active'),
+        expiresAt: tier === 'founder' ? null : user.subscription?.expiresAt,
+        isFounder: tier === 'founder',
+        features: walletConnectService.getTierFeatures(tier)
       }
     });
   } catch (error) {
@@ -218,7 +226,7 @@ router.post('/upgrade', authenticate, async (req, res) => {
 router.get('/paywall/:feature', authenticate, async (req, res) => {
   try {
     const { feature } = req.params;
-    const userTier = req.user.subscription?.tier || 'free';
+    const userTier = getEffectiveTier(req.user);
     
     const paywallConfig = walletConnectService.getPaywallConfig(feature, userTier);
     
@@ -241,7 +249,7 @@ router.get('/paywall/:feature', authenticate, async (req, res) => {
  */
 router.get('/features', authenticate, async (req, res) => {
   try {
-    const userTier = req.user.subscription?.tier || 'free';
+    const userTier = getEffectiveTier(req.user);
     const features = walletConnectService.getTierFeatures(userTier);
     
     res.json({

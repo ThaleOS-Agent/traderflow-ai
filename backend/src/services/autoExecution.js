@@ -415,6 +415,24 @@ export class AutoExecutionEngine {
           sanitizedConfig.maxDailyTrades = maxDailyTrades;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'maxConcurrentPositions')) {
+        const maxConcurrentPositions = Number(newConfig.maxConcurrentPositions);
+        if (Number.isInteger(maxConcurrentPositions) && maxConcurrentPositions > 0) {
+          sanitizedConfig.maxConcurrentPositions = maxConcurrentPositions;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'minConfidence')) {
+        const minConfidence = Number(newConfig.minConfidence);
+        if (Number.isFinite(minConfidence) && minConfidence >= 0 && minConfidence <= 100) {
+          sanitizedConfig.minConfidence = minConfidence;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'positionSizePercent')) {
+        const positionSizePercent = Number(newConfig.positionSizePercent);
+        if (Number.isFinite(positionSizePercent) && positionSizePercent > 0 && positionSizePercent <= 100) {
+          sanitizedConfig.positionSizePercent = positionSizePercent;
+        }
+      }
       if (Array.isArray(newConfig.exchanges)) {
         sanitizedConfig.exchanges = Array.from(new Set(
           newConfig.exchanges
@@ -433,6 +451,10 @@ export class AutoExecutionEngine {
       ...engine.config,
       ...sanitizedConfig
     };
+
+    if (Object.prototype.hasOwnProperty.call(sanitizedConfig, 'maxConcurrentPositions')) {
+      engine.riskManager.settings.maxPositions = sanitizedConfig.maxConcurrentPositions;
+    }
 
     // Update user in database
     await User.findByIdAndUpdate(userId, {

@@ -74,6 +74,25 @@ export class WalletConnectService {
         maxStrategies: 100,
         maxPositions: 500,
         apiCallsPerDay: 500000
+      },
+      founder: {
+        name: 'Founder',
+        price: 0,
+        features: [
+          'all_features',
+          'live_trading',
+          'paper_trading',
+          'all_strategies',
+          'ensemble_master',
+          'ml_predictions',
+          'dex_integration',
+          'api_access',
+          'white_glove_service',
+          'founder_controls'
+        ],
+        maxStrategies: Number.MAX_SAFE_INTEGER,
+        maxPositions: Number.MAX_SAFE_INTEGER,
+        apiCallsPerDay: Number.MAX_SAFE_INTEGER
       }
     };
     
@@ -349,6 +368,27 @@ export class WalletConnectService {
       const user = await User.findById(userId);
       if (!user) {
         throw new Error('User not found');
+      }
+
+      if (user.role === 'founder' || user.isFounder === true || user.subscription?.tier === 'founder') {
+        user.subscription = {
+          tier: 'founder',
+          status: 'lifetime',
+          startedAt: user.subscription?.startedAt || new Date(),
+          expiresAt: null,
+          paymentMethod: user.subscription?.paymentMethod || 'founder',
+          txHash: user.subscription?.txHash || null
+        };
+        user.isFounder = true;
+        user.role = 'founder';
+        await user.save();
+
+        return {
+          success: true,
+          tier: 'founder',
+          features: this.getTierFeatures('founder'),
+          expiresAt: null
+        };
       }
       
       const tierConfig = this.subscriptionTiers[newTier];

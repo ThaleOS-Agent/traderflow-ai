@@ -12,6 +12,15 @@ interface ExchangeConnection {
   hasPassphrase: boolean;
 }
 
+interface SupportedVenue {
+  name: string;
+  label?: string;
+  type?: string;
+  credentialHint?: string;
+  configured?: boolean;
+  connection?: ExchangeConnection | null;
+}
+
 const defaultForm = {
   name: 'binance',
   apiKey: '',
@@ -44,6 +53,7 @@ function venueMeta(name: string) {
 
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
+  const [supportedVenues, setSupportedVenues] = useState<SupportedVenue[]>([]);
   const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -53,8 +63,10 @@ export function ExchangeConnections() {
     try {
       const res = await api.getExchangeConnections();
       setConnections(res.connections as unknown as ExchangeConnection[]);
+      setSupportedVenues((res.supported ?? []) as unknown as SupportedVenue[]);
     } catch {
       setConnections([]);
+      setSupportedVenues([]);
     }
   }, []);
 
@@ -80,10 +92,31 @@ export function ExchangeConnections() {
     await load();
   };
 
+  const deactivate = async (id: string) => {
+    await api.deactivateExchangeConnection(id);
+    await load();
+  };
+
   const remove = async (id: string) => {
     await api.deleteExchangeConnection(id);
     await load();
   };
+
+  const openVenueForm = (name: string) => {
+    setForm(f => ({ ...f, name }));
+    setShowForm(true);
+  };
+
+  const venues = supportedVenues.length
+    ? supportedVenues
+    : SUPPORTED_VENUES.map(venue => ({
+      name: venue.value,
+      label: venue.label,
+      type: venue.type.toLowerCase(),
+      credentialHint: venue.hint,
+      configured: connections.some(connection => connection.name === venue.value),
+      connection: connections.find(connection => connection.name === venue.value) ?? null,
+    }));
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-5">
@@ -104,28 +137,52 @@ export function ExchangeConnections() {
       )}
 
       <div className="space-y-2 mb-3">
-        {connections.map(connection => (
-          <div key={connection.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-            <div>
-              <p className="text-white text-xs font-semibold">
-                {venueMeta(connection.name).label} {connection.isActive && <span className="text-green-400">Active</span>}
-              </p>
-              <p className="text-gray-500 text-xs">
-                {venueMeta(connection.name).type} · {connection.isTestnet ? 'Testnet / practice' : 'Live'} · {connection.hasApiKey ? 'API key saved' : 'No key'}
-              </p>
+        {venues.map(venue => {
+          const connection = venue.connection ?? connections.find(item => item.name === venue.name) ?? null;
+          const meta = venueMeta(venue.name);
+          const type = venue.type ?? meta.type;
+          const label = venue.label ?? meta.label;
+          const hint = venue.credentialHint ?? meta.hint;
+
+          return (
+            <div key={venue.name} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+              <div>
+                <p className="text-white text-xs font-semibold">
+                  {label}{' '}
+                  {connection?.isActive && <span className="text-green-400">Active</span>}
+                  {!connection && <span className="text-gray-500">Not configured</span>}
+                </p>
+                <p className="text-gray-500 text-xs">
+                  {type.replace(/\b\w/g, c => c.toUpperCase())} ·{' '}
+                  {connection ? (connection.isTestnet ? 'Testnet / practice' : 'Live') : hint}
+                  {connection && ` · ${connection.hasApiKey ? 'API key saved' : 'No key'}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!connection && (
+                  <button onClick={() => openVenueForm(venue.name)} className="text-xs text-cyan-300 hover:text-cyan-200">
+                    Configure
+                  </button>
+                )}
+                {connection && !connection.isActive && (
+                  <button onClick={() => activate(connection.id)} className="text-xs text-cyan-300 hover:text-cyan-200">
+                    Enable
+                  </button>
+                )}
+                {connection?.isActive && (
+                  <button onClick={() => deactivate(connection.id)} className="text-xs text-yellow-300 hover:text-yellow-200">
+                    Disable
+                  </button>
+                )}
+                {connection && (
+                  <button onClick={() => remove(connection.id)} className="text-gray-500 hover:text-red-400">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {!connection.isActive && (
-                <button onClick={() => activate(connection.id)} className="text-xs text-cyan-300 hover:text-cyan-200">
-                  Use
-                </button>
-              )}
-              <button onClick={() => remove(connection.id)} className="text-gray-500 hover:text-red-400">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

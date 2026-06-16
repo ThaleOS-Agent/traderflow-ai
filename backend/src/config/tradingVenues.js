@@ -18,6 +18,10 @@ export const normalizeTradingVenue = (venue) => {
   return SUPPORTED_TRADING_VENUES.includes(normalized) ? normalized : 'binance';
 };
 
+export const isSupportedTradingVenue = (venue) => (
+  SUPPORTED_TRADING_VENUES.includes(venue?.toString().trim().toLowerCase())
+);
+
 export const normalizeStrategyName = (strategy) => (
   strategy?.toString().trim().toLowerCase().replace(/\s+/g, '_') || 'auto'
 );

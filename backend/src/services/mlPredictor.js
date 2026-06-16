@@ -314,6 +314,33 @@ export class MLPredictor {
   async forecastVolatility(marketData) {
     try {
       const { symbol, assetType, prices, highs, lows } = marketData;
+      const MAX_SERIES_LENGTH = 10000;
+
+      if (
+        !Array.isArray(prices) ||
+        !Array.isArray(highs) ||
+        !Array.isArray(lows)
+      ) {
+        throw new Error('Invalid market data: prices, highs, and lows must be arrays');
+      }
+
+      if (
+        prices.length < 2 ||
+        highs.length < 2 ||
+        lows.length < 2 ||
+        highs.length !== lows.length ||
+        highs.length !== prices.length
+      ) {
+        throw new Error('Invalid market data: series must have matching lengths of at least 2');
+      }
+
+      if (
+        prices.length > MAX_SERIES_LENGTH ||
+        highs.length > MAX_SERIES_LENGTH ||
+        lows.length > MAX_SERIES_LENGTH
+      ) {
+        throw new Error('Invalid market data: series length exceeds maximum allowed size');
+      }
       
       // Calculate ATR
       const atr = this.calculateATR(highs, lows, prices, 14);

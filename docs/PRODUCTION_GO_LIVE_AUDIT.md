@@ -123,6 +123,19 @@ Status: `Ready for next audit gate`. Production AI-learning actions, signal pers
 - Verify dashboard live feed displays signal, order, trade, market, and portfolio events with last-event status.
 - Verify polling fallback still updates portfolio, trades, signals, market feed, strategy results, AI learning, and exchange connections.
 
+#### Production Evidence - 2026-06-16
+
+- `GET /api/dashboard/live-feed` returned `200` with live cross-asset data across `crypto`, `forex`, `metal`, and `oil`.
+- Production category counts returned `crypto=4`, `forex=3`, `metal=2`, and `oil=2`.
+- Metals feed was repaired by switching the Yahoo provider symbols from delisted spot aliases to working futures-backed symbols while preserving `XAU_USD` and `XAG_USD` display identifiers.
+- Authenticated production WebSocket subscribed successfully to `signals`, `trades`, `orders`, `portfolio`, and `marketData`.
+- The same production WebSocket session observed `newSignal`, `orderExecuted`, `tradeExecuted`, `portfolio_update`, and `marketData` events.
+- The production `marketData` event payload arrived with the current tracked engine pairs and refreshed the live event stream.
+- Polling-fallback endpoints used by the dashboard all returned current data during the live check: portfolio, trades, signals, live feed, strategy results, AI learning, and exchange connections.
+- During the gate-5 production check, portfolio totals increased from `10` to `11`, signals increased from `7` to `8`, AI-learning recent-signal count increased from `7` to `8`, and exchange supported-venue count remained stable at `10`.
+
+Status: `Ready for next audit gate`. Production cross-asset feed coverage, WebSocket subscriptions, market events, and polling fallback data sources are verified.
+
 ### 6. WalletConnect And Wallet Auth
 
 - Verify WalletConnect session creation returns a URI, message, and expiry.

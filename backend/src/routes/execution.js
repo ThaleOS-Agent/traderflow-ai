@@ -9,7 +9,11 @@ const router = express.Router();
 router.get('/status', authenticateToken, async (req, res) => {
   try {
     const stats = autoExecution.getStats(req.userId);
-    const config = autoExecution.getConfig(req.userId);
+    let config = autoExecution.getConfig(req.userId);
+    if (!config) {
+      await autoExecution.initializeUser(req.userId);
+      config = autoExecution.getConfig(req.userId);
+    }
     
     res.json({
       enabled: config?.enabled || false,

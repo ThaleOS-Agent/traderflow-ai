@@ -675,8 +675,19 @@ export class MLPredictor {
    * Calculate volatility
    */
   calculateVolatility(prices) {
+    const MAX_PRICE_POINTS = 10000;
+
+    if (!Array.isArray(prices)) {
+      return 0;
+    }
+
+    const safeLength = Math.min(prices.length, MAX_PRICE_POINTS);
+    if (safeLength < 2) {
+      return 0;
+    }
+
     const returns = [];
-    for (let i = 1; i < prices.length; i++) {
+    for (let i = 1; i < safeLength; i++) {
       returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
     }
     

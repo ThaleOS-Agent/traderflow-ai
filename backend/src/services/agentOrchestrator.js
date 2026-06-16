@@ -64,6 +64,7 @@ export class AgentOrchestrator {
       opportunities: [],
       patterns: [],
       arbitrage: [],
+      ml: [],
       signals: [],
       riskDecisions: [],
       executions: []
@@ -121,6 +122,18 @@ export class AgentOrchestrator {
     if (!agent) return;
     agent.status = status;
     agent.lastSeenAt = new Date().toISOString();
+  }
+
+  agentIdForSource(source) {
+    if (this.agents.has(source)) return source;
+    if (String(source).startsWith('training.')) return 'ensemble_master';
+    if (String(source).includes('pattern')) return 'pattern_scanner';
+    if (String(source).includes('arbitrage')) return 'arbitrage_detector';
+    if (String(source).includes('ml')) return 'ml_predictor';
+    if (String(source).includes('execution')) return 'auto_execution_engine';
+    if (String(source).includes('trading')) return 'trading_engine';
+    if (String(source).includes('scanner')) return 'market_scanner';
+    return 'market_scanner';
   }
 
   recordMarketData(marketData, source = 'trading_engine') {
@@ -188,9 +201,55 @@ export class AgentOrchestrator {
     return this.processOpportunity(executable, source);
   }
 
+  recordMlOutput(output, source = 'ml_predictor') {
+    if (!output) return null;
+    this.touchAgent('ml_predictor');
+    const payload = {
+      symbol: output.symbol || output.opportunity?.symbol,
+      model: output.model || output.score?.model || output.prediction?.model,
+      direction: output.direction || output.prediction?.direction,
+      confidenceScore: Number(output.confidenceScore || output.score?.confidenceScore || output.prediction?.confidenceScore || 0),
+      recommendation: output.recommendation || output.score?.recommendation,
+      timestamp: output.timestamp || new Date().toISOString()
+    };
+    this.pushCapped(this.sharedContext.ml, payload, 100);
+    return this.recordEvent({
+      source,
+      type: 'ml_output',
+      status: 'observed',
+      payload
+    });
+  }
+
+  async processMlOpportunity({ opportunity, prediction, score } = {}, source = 'ml_predictor', userId = null) {
+    this.recordMlOutput({ ...prediction, score, opportunity }, source);
+    if (!opportunity) {
+      return { routed: false, reason: 'ML output has no executable opportunity' };
+    }
+
+    const enrichedOpportunity = {
+      ...opportunity,
+      confidenceScore: Number(score?.confidenceScore || prediction?.confidenceScore || opportunity.confidenceScore || 0),
+      confidence: score?.confidence || opportunity.confidence,
+      strategy: opportunity.strategy || 'ml_predictor',
+      analysis: opportunity.analysis || `ML ${score?.recommendation || prediction?.direction || 'signal'} output`,
+      metadata: {
+        ...opportunity.metadata,
+        mlPrediction: prediction,
+        mlScore: score
+      }
+    };
+
+    if (userId) {
+      return this.processOpportunityForUser(userId, enrichedOpportunity, source);
+    }
+
+    return this.processOpportunity(enrichedOpportunity, source);
+  }
+
   recordSignal(signal, source = 'trading_engine') {
     if (!signal) return null;
-    this.touchAgent(source === 'training.generate-signal' ? 'ensemble_master' : 'trading_engine');
+    this.touchAgent(this.agentIdForSource(source));
     this.pushCapped(this.sharedContext.signals, this.summarizeOpportunity(signal), 100);
     return this.recordEvent({
       source,
@@ -215,7 +274,7 @@ export class AgentOrchestrator {
       return { routed: false, reason: 'Opportunity is missing required execution fields' };
     }
 
-    this.touchAgent('market_scanner');
+    this.touchAgent(this.agentIdForSource(source));
     this.stats.routedOpportunities++;
     this.pushCapped(this.sharedContext.opportunities, this.summarizeOpportunity(normalizedOpportunity), 150);
     this.recordEvent({
@@ -229,44 +288,11 @@ export class AgentOrchestrator {
     const results = [];
 
     for (const user of users) {
-      const userId = user._id.toString();
-      const plan = await this.autoExecution.previewExecutionPlan(userId, normalizedOpportunity);
-      if (!plan.executable) {
-        const decision = this.recordRiskDecision({
-          userId,
-          opportunity: normalizedOpportunity,
-          approved: false,
-          reason: plan.reason,
-          source
-        });
-        results.push({ userId, approved: false, reason: plan.reason, decisionId: decision.id });
-        continue;
-      }
-
-      const riskDecision = await this.evaluateRisk(userId, normalizedOpportunity, plan);
-      results.push({ userId, ...riskDecision });
-
-      if (!riskDecision.approved) {
-        continue;
-      }
-
-      try {
-        await this.autoExecution.executeForUser(userId, normalizedOpportunity, riskDecision);
-        this.stats.dispatchedExecutions++;
-      } catch (error) {
-        this.stats.failedExecutions++;
-        this.recordEvent({
-          source: 'auto_execution_engine',
-          type: 'execution_failed',
-          status: 'failed',
-          payload: {
-            userId,
-            symbol: normalizedOpportunity.symbol,
-            exchange: normalizedOpportunity.exchange,
-            reason: error.message
-          }
-        });
-      }
+      const result = await this.processOpportunityForUser(user._id.toString(), normalizedOpportunity, source, {
+        normalized: true,
+        recordOpportunity: false
+      });
+      results.push(result);
     }
 
     return {
@@ -275,6 +301,72 @@ export class AgentOrchestrator {
       usersEvaluated: users.length,
       results
     };
+  }
+
+  async processOpportunityForUser(userId, opportunity, source = 'manual_execution', options = {}) {
+    if (!this.autoExecution) {
+      return { userId, approved: false, routed: false, reason: 'Canonical executor unavailable' };
+    }
+
+    const normalizedOpportunity = options.normalized
+      ? opportunity
+      : this.normalizeOpportunity(opportunity, source);
+
+    if (!this.isExecutableOpportunity(normalizedOpportunity)) {
+      return { userId, approved: false, routed: false, reason: 'Opportunity is missing required execution fields' };
+    }
+
+    this.touchAgent(this.agentIdForSource(source));
+    if (options.recordOpportunity !== false) {
+      this.stats.routedOpportunities++;
+      this.pushCapped(this.sharedContext.opportunities, this.summarizeOpportunity(normalizedOpportunity), 150);
+      this.recordEvent({
+        source,
+        type: 'opportunity_ingested',
+        status: 'queued',
+        payload: {
+          ...this.summarizeOpportunity(normalizedOpportunity),
+          userId
+        }
+      });
+    }
+
+    const plan = await this.autoExecution.previewExecutionPlan(userId, normalizedOpportunity);
+    if (!plan.executable) {
+      const decision = this.recordRiskDecision({
+        userId,
+        opportunity: normalizedOpportunity,
+        approved: false,
+        reason: plan.reason,
+        source
+      });
+      return { userId, approved: false, reason: plan.reason, decisionId: decision.id };
+    }
+
+    const riskDecision = await this.evaluateRisk(userId, normalizedOpportunity, plan);
+    if (!riskDecision.approved) {
+      return { userId, ...riskDecision };
+    }
+
+    try {
+      await this.autoExecution.executeForUser(userId, normalizedOpportunity, riskDecision);
+      this.stats.dispatchedExecutions++;
+      return { userId, ...riskDecision, dispatched: true };
+    } catch (error) {
+      this.stats.failedExecutions++;
+      this.recordEvent({
+        source: 'auto_execution_engine',
+        type: 'execution_failed',
+        status: 'failed',
+        payload: {
+          userId,
+          symbol: normalizedOpportunity.symbol,
+          exchange: normalizedOpportunity.exchange,
+          reason: error.message
+        }
+      });
+      return { userId, approved: false, dispatched: false, reason: error.message };
+    }
   }
 
   async evaluateRisk(userId, opportunity, plan) {
@@ -504,6 +596,7 @@ export class AgentOrchestrator {
         opportunities: this.sharedContext.opportunities.length,
         patterns: this.sharedContext.patterns.length,
         arbitrage: this.sharedContext.arbitrage.length,
+        ml: this.sharedContext.ml.length,
         signals: this.sharedContext.signals.length,
         riskDecisions: this.sharedContext.riskDecisions.length,
         executions: this.sharedContext.executions.length

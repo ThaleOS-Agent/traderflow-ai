@@ -419,14 +419,16 @@ export class AutoExecutionEngine {
       : quantity;
     const cappedQuantity = Math.min(quantity, maxQuantity);
     
-    // Round based on price magnitude
+    // Round based on price magnitude without zeroing high-priced fractional assets.
     if (entryPrice < 1) {
       return Math.floor(cappedQuantity * 10000) / 10000; // 4 decimals
     } else if (entryPrice < 100) {
       return Math.floor(cappedQuantity * 100) / 100; // 2 decimals
+    } else if (entryPrice >= 10000) {
+      return Math.floor(cappedQuantity * 100000) / 100000; // 5 decimals
     }
     
-    return Math.floor(cappedQuantity * 10) / 10; // 1 decimal
+    return Math.floor(cappedQuantity * 1000) / 1000; // 3 decimals
   }
 
   /**

@@ -77,6 +77,19 @@ Status: `Partial`. Code paths and dashboard surface are aligned, but live local 
 - Verify closing a live trade uses the original trade venue, not an arbitrary active connection.
 - Verify open/closed trade counts and P&L recalculate after create and close.
 
+#### Production Evidence - 2026-06-16
+
+- Founder paper trade create against Railway production returned `201` and persisted the selected venue.
+- Founder paper trade close against Railway production returned `200` and persisted `status=closed`, `exchange=binance`, `exitPrice`, `profit`, and `closedAt`.
+- Portfolio changed from `totalTrades=4`, `investedAmount=0` before create to `totalTrades=5`, `investedAmount=64.08402` after create, then back to `investedAmount=0` after close.
+- Portfolio realized P&L changed from `totalProfit=69.47031` before create to `totalProfit=71.4483` after close.
+- Aggregate trade stats changed from `winningTrades=3`, `winRate=75.00` before create to `winningTrades=4`, `winRate=80.00` after close.
+- Trade list returned the newly created order immediately after create.
+- Direct WebSocket event delivery was not reliable while Railway app replicas were set to `2` because broadcasts are in-memory per instance.
+- Railway deployment config was reduced to `1` replica until shared pub/sub fanout is implemented so order, trade, and portfolio events stay coherent for connected dashboards.
+
+Status: `Ready for production paper-order verification after single-replica deploy`. Persistence and portfolio math are verified in production. Final gate-3 signoff still requires re-running the live WebSocket create/close check after the single-replica deployment is active.
+
 ### 4. Signals, Auto-Trading, And AI Learning
 
 - Verify AI learning actions run from the dashboard:

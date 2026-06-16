@@ -17,6 +17,14 @@ MongoDB service: MongoDB
 URL: https://traderflow-ai-production.up.railway.app
 ```
 
+Current production replica policy:
+
+```text
+App replicas: 1
+Reason: WebSocket order, trade, and portfolio events currently use in-memory broadcast only.
+Increase replicas again only after shared pub/sub fanout is added.
+```
+
 Required Railway service variables:
 
 ```text

@@ -178,6 +178,29 @@ Status: `Ready for next audit gate`. Multi-agent roles, shared context, shared r
 - Verify MetaMask signing still verifies wallet ownership when available.
 - Verify wallet founder mapping upgrades role, tier, subscription status, and feature set.
 
+#### Code And UI Evidence - 2026-06-16
+
+- [walletConnectService.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/walletConnectService.js) creates WalletConnect-style sessions with `uri`, signed login `message`, nonce, and five-minute expiry.
+- [wallet.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/wallet.js) exposes session creation, session polling, signature verification, wallet linking, disconnect, tier, feature, and founder dashboard routes.
+- [WalletConnect.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/WalletConnect.tsx) shows both MetaMask verification and an embedded WalletConnect session panel with URI display, copy action, expiry display, and polling status.
+- [api.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/api.ts) exposes `createWalletSession`, `getWalletSession`, `verifyWallet`, `linkWallet`, and `disconnectWallet` for the dashboard.
+- Founder tier feature resolution includes `all_features`, `all_exchanges`, and `all_strategies`, and wallet founder mapping sets role `founder`, founder flag, lifetime subscription status, and founder tier.
+
+#### Production Evidence - 2026-06-16
+
+- `node --check` passed for `backend/src/services/walletConnectService.js` and `backend/src/routes/wallet.js`.
+- `npm run build` passed with the existing large frontend chunk warning.
+- Production `POST /api/wallet/connect` returned `200` with a session URI, signing message, and expiry.
+- Production `GET /api/wallet/session/:sessionId` returned `200` with `pending` before signature verification.
+- Production wallet verification using a generated EIP-191 wallet signature returned `200`, `success=true`, and a free-tier wallet user token.
+- Production session polling after verification returned `connected` and a wallet address present.
+- Production `GET /api/wallet/features` using the verified wallet token returned `200` with tier `free`.
+- Founder login returned `200`; founder `GET /api/wallet/features` returned tier `founder`; founder `GET /api/wallet/founder/dashboard` returned `200` with full access.
+- Local service-level expiry verification showed a pending session changes to `expired` after expiry time passes.
+- Local service-level founder feature verification showed founder tier includes `all_features`, `all_exchanges`, and `all_strategies`.
+
+Status: `Ready for next audit gate`. WalletConnect session creation, polling, expiry behavior, MetaMask-compatible signature verification, feature access, and founder full-access wallet auth paths are verified.
+
 ### 8. Database And Logs
 
 - Verify Mongo collections exist and contain expected documents for users, exchanges, trades, signals, subscriptions, wallets, notifications, and training output.

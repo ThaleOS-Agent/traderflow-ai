@@ -131,13 +131,9 @@ export class MultiExchangeConnector {
     return crypto.createHmac('sha512', secret).update(endpoint + hash).digest('base64');
   }
 
-generateKucoinSignature(endpoint, params, timestamp) {
+  generateKucoinSignature(endpoint, params, timestamp) {
     const strForSign = timestamp + 'GET' + endpoint + (params ? '?' + params : '');
-
-    // CodeQL: This is an API request signature per KuCoin spec, not password hashing.
-    // The HMAC authenticates the request; the passphrase is sent separately in KC-API-PASSPHRASE.
-    // See https://docs.kucoin.com/authentication#base-signature
-    return crypto.createHmac('sha256', this.apiSecret).update(strForSign).digest('base64');
+    return crypto.createHmac('sha256', this.apiSecret).update(strForSign).digest('base64'); // CodeQL-[SM02226] This is an API request signature per KuCoin spec, not password hashing.
   }
 
     generateBybitSignature({ method = "GET", path = "/", query = "", body = "" }, timestamp) {

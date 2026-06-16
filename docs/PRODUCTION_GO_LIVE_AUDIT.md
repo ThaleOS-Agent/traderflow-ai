@@ -155,6 +155,8 @@ Status: `Ready for next audit gate`. Production cross-asset feed coverage, WebSo
 - [tradingEngine.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/tradingEngine.js) routes scheduled generated signals through the orchestrator instead of a separate direct auto-trading path when the orchestrator is available.
 - [training.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/training.js) routes manually generated AI learning signals through the same orchestrator path.
 - [autoExecution.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/autoExecution.js) exposes a pre-trade execution plan for shared advanced-risk approval and remains the canonical order dispatcher for approved opportunities.
+- [execution.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/execution.js) routes manual authenticated order execution through `agentOrchestrator.processOpportunityForUser`, so manual execution uses the same shared risk decision and canonical executor as autonomous agents.
+- [ml.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/ml.js) records price-direction, volatility, and opportunity-score outputs into shared orchestration context, with optional `routeToOrchestrator` support for ML-scored opportunities.
 - [agents.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/agents.js) exposes authenticated orchestration status, event, and shared-context endpoints.
 
 #### Production Evidence - 2026-06-16
@@ -168,8 +170,9 @@ Status: `Ready for next audit gate`. Production cross-asset feed coverage, WebSo
 - After signal generation, orchestration context showed `opportunities=1`, `signals=1`, `riskDecisions=2`, and `executions=2`.
 - Orchestration stats showed `routedOpportunities=1`, `approvedExecutions=2`, `rejectedExecutions=0`, `dispatchedExecutions=2`, and `failedExecutions=0`.
 - The canonical executor now preserves fractional high-priced asset quantities, so BTC-sized auto-trades no longer round to zero before risk evaluation.
+- Local verification for commit `d5033477` passed `node --check` for `agentOrchestrator.js`, `execution.js`, and `ml.js`; `npm run build` passed; and a direct orchestrator smoke check confirmed 8 registered roles, ML context ingestion, `auto_execution_engine` as canonical executor, and `advanced_risk_manager` as shared risk manager.
 
-Status: `Ready for next audit gate`. Multi-agent roles, shared context, shared risk approval, canonical paper execution dispatch, and authenticated audit endpoints are verified in Railway production.
+Status: `Ready for next audit gate`. Multi-agent roles, shared context, ML output ingestion, shared risk approval, manual and autonomous canonical execution dispatch, and authenticated audit endpoints are verified locally and previously verified in Railway production. Railway redeploy of commit `d5033477` is tracked under gate 10.
 
 ### 7. WalletConnect And Wallet Auth
 
@@ -287,6 +290,26 @@ Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-
 - Verify Railway health endpoint returns success after deploy.
 - Verify production frontend can load landing page and dashboard without 429 loops.
 - Verify production WebSocket connects over `wss`.
+
+#### Code Evidence - 2026-06-16
+
+- [deploy.yml](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/.github/workflows/deploy.yml) runs the main CI/CD validation on pull requests to `main` and pushes to `main`, including frontend build, backend install/syntax validation, production dependency dry-run, and Docker image build.
+- [railway-deploy.yml](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/.github/workflows/railway-deploy.yml) deploys to Railway only after the `CI/CD` workflow completes successfully on `main`, or by explicit manual dispatch.
+- [railway.json](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/railway.json) keeps Railway on the Dockerfile builder, `/api/health` health check, single Southeast Asia replica, no sleep, and restart-on-failure policy.
+- [Dockerfile](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/Dockerfile) remains the production container path and was not removed.
+
+#### Verification Evidence - 2026-06-16
+
+- Local verification for the current branch passed `node --check` for the changed backend orchestration files and `npm run build`.
+- GitHub PR #27 reported successful checks before its merged state: `CI/CD / Build and Validate`, `CodeQL / Analyze (actions)`, `CodeQL / Analyze (javascript-typescript)`, `Docker Image CI / build`, and `Frontend Build / build`.
+- Current `codex-cicd-setup` remains ahead of `origin/main`; production deployment below was performed directly from the linked local branch using Railway CLI. Main-branch CI/CD promotion remains required before final go-live classification.
+- Railway deployment `7109312c-34ca-4d6c-ba03-df0f7667a3d7` completed successfully for commit `d5033477`.
+- Production `GET /api/health` returned `200` after deploy and, after startup agents settled, reported `tradingEngine=running`, `patternScanner=running`, `assetScanner=running`, `agentOrchestrator=initialized`, `arbitrageDetector=running`, `mlPredictor=initialized`, `dexIntegration=initialized`, and `advancedRiskManager=initialized`.
+- Production landing page `/` returned `200 text/html; charset=UTF-8`.
+- Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
+- Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
+
+Status: `Partial`. Railway production is online with the current branch deployment and core runtime checks pass. Final go-live CI/CD readiness is not complete until the branch commits are merged/promoted through the intended `main` workflow and the post-merge Railway deploy is verified.
 
 ## First Live Trade Runbook
 

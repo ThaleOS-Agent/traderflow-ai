@@ -202,11 +202,14 @@ export class AdvancedRiskManager {
   calculateVaR(positionValue, marketData, confidence = 0.95) {
     // Use historical simulation or parametric method
     let dailyVolatility = 0.04; // Default 4% daily volatility
+    const prices = Array.isArray(marketData?.prices) ? marketData.prices : null;
+    const maxPricesToProcess = 1000;
+    const pricesLength = prices ? Math.min(prices.length, maxPricesToProcess) : 0;
     
-    if (marketData && marketData.prices && marketData.prices.length > 30) {
+    if (pricesLength > 30) {
       const returns = [];
-      for (let i = 1; i < marketData.prices.length; i++) {
-        returns.push((marketData.prices[i] - marketData.prices[i - 1]) / marketData.prices[i - 1]);
+      for (let i = 1; i < pricesLength; i++) {
+        returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
       }
       
       const mean = returns.reduce((a, b) => a + b, 0) / returns.length;

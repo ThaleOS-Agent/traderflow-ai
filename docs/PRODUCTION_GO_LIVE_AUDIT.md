@@ -100,6 +100,22 @@ Status: `Ready for next audit gate`. Production paper-order persistence, portfol
 - Verify auto-trading respects paper/live mode, risk limits, max positions, and strategy confidence thresholds.
 - Verify strategy result cards show real metrics when data exists and clear zero-state metrics before history exists.
 
+#### Production Evidence - 2026-06-16
+
+- Founder `POST /api/training/start` returned `200` with successful ML training output and optimized weights.
+- Founder `POST /api/training/apply` returned `200` and applied trained ensemble weights.
+- Founder `POST /api/training/deploy-master` returned `200` and activated the ensemble master deployment path.
+- Founder `POST /api/training/generate-signal` returned `200`, persisted `ensemble_master` signals, and production WebSocket delivered `newSignal`.
+- Founder `POST /api/user/toggle-auto-trading` returned `200`, and `/api/dashboard/bot-status` confirmed `autoTrading=true`, `paperTrading=true`, and `isRegistered=true`.
+- After the sizing fix, a generated `BTCUSDT` signal opened a paper auto-trade in production with `strategy=ensemble_master`, `exchange=binance`, and `status=open`.
+- Production WebSocket delivered execution updates during the auto-trade flow, including `orderExecuted` and `portfolio_update`.
+- Founder portfolio changed from `totalTrades=6` to `totalTrades=7`, and `investedAmount` increased to `4996.098983247111` after the auto-trade opened.
+- `/api/dashboard/strategy-results` now shows non-zero `ensemble_master` metrics with `totalTrades=1`, `openTrades=1`, `activeSignals=4`, and `avgConfidence=70`.
+- `/api/dashboard/ai-learning` reflected updated learning data after training and signal generation with `recentSignals=4` and `avgSignalConfidence=70`.
+- Automated sizing now caps quantity by the user's configured `maxPositionSize` notional before risk validation, so high-priced assets no longer fail the auto-trade path solely because the engine sized them above its own position-value guard.
+
+Status: `Ready for next audit gate`. Production AI-learning actions, signal persistence, auto-trade execution, portfolio updates, and strategy metrics are verified.
+
 ### 5. Market Data And Feeds
 
 - Verify live market feed loads crypto, forex, metals, and oil data.

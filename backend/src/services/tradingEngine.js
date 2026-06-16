@@ -233,6 +233,20 @@ export class TradingEngine {
            signal.confidenceScore >= 70;
   }
 
+  capQuantityByPositionValue(quantity, entryPrice, maxPositionValue) {
+    const normalizedQuantity = Number(quantity) || 0;
+    const normalizedPrice = Number(entryPrice) || 0;
+    const normalizedMaxPositionValue = Number(maxPositionValue) || 0;
+
+    if (normalizedQuantity <= 0 || normalizedPrice <= 0) return 0;
+    if (normalizedMaxPositionValue <= 0) return normalizedQuantity;
+
+    const maxQuantity = normalizedMaxPositionValue / normalizedPrice;
+    const capped = Math.min(normalizedQuantity, maxQuantity);
+
+    return Math.floor(capped * 10000) / 10000;
+  }
+
   // Save signal to database
   async saveSignal(signalData) {
     try {
@@ -305,12 +319,22 @@ export class TradingEngine {
 
       // Calculate position size
       const accountBalance = user.portfolio?.availableBalance || 10000;
-      const quantity = riskManager.calculatePositionSize(
+      const rawQuantity = riskManager.calculatePositionSize(
         signal.entryPrice,
         signal.stopLoss,
         accountBalance,
         user.tradingSettings?.stopLossPercent || 2
       );
+      const quantity = this.capQuantityByPositionValue(
+        rawQuantity,
+        signal.entryPrice,
+        user.tradingSettings?.maxPositionSize || 0
+      );
+
+      if (quantity <= 0) {
+        logger.warn(`Auto-trade quantity resolved to zero for user ${userId}`);
+        return;
+      }
 
       // Validate trade
       const validation = riskManager.validateTrade(

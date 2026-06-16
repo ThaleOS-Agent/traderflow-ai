@@ -205,8 +205,14 @@ export class AutoExecutionEngine {
       accountBalance,
       config.positionSizePercent,
       opportunity.entryPrice,
-      opportunity.stopLoss
+      opportunity.stopLoss,
+      user.tradingSettings?.maxPositionSize || 0
     );
+
+    if (positionSize <= 0) {
+      logger.warn(`Position size resolved to zero for user ${userId}`);
+      return;
+    }
 
     // Validate with risk manager
     const validation = riskManager.validateTrade(
@@ -344,22 +350,26 @@ export class AutoExecutionEngine {
   /**
    * Calculate position size based on risk parameters
    */
-  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss) {
+  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss, maxPositionValue = 0) {
     const riskAmount = accountBalance * (positionSizePercent / 100);
     const priceRisk = Math.abs(entryPrice - stopLoss);
     
     if (priceRisk === 0) return 0;
     
     const quantity = riskAmount / priceRisk;
+    const maxQuantity = maxPositionValue > 0 && entryPrice > 0
+      ? maxPositionValue / entryPrice
+      : quantity;
+    const cappedQuantity = Math.min(quantity, maxQuantity);
     
     // Round based on price magnitude
     if (entryPrice < 1) {
-      return Math.floor(quantity * 10000) / 10000; // 4 decimals
+      return Math.floor(cappedQuantity * 10000) / 10000; // 4 decimals
     } else if (entryPrice < 100) {
-      return Math.floor(quantity * 100) / 100; // 2 decimals
+      return Math.floor(cappedQuantity * 100) / 100; // 2 decimals
     }
     
-    return Math.floor(quantity * 10) / 10; // 1 decimal
+    return Math.floor(cappedQuantity * 10) / 10; // 1 decimal
   }
 
   /**

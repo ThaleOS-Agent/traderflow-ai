@@ -207,6 +207,38 @@ Status: `Ready for next audit gate`. WalletConnect session creation, polling, ex
 - Verify generated runtime logs remain ignored and are not committed.
 - Verify no historical user IDs, wallet addresses, trade activity, API keys, or broker credentials are tracked in git.
 
+#### Code Evidence - 2026-06-16
+
+- [audit.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/audit.js) exposes founder/admin-only `GET /api/audit/database` for sanitized production database evidence.
+- The audit route returns Mongo connection state, top-level collection names, aggregate document counts, index counts, and embedded-data locations only; it does not return documents, user IDs, wallet addresses, exchange API keys, broker credentials, JWTs, or Mongo connection strings.
+- [server.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/server.js) mounts the audit route at `/api/audit`.
+- [User.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/User.js) stores exchange connections, MT accounts, subscriptions, wallets, and notification settings as embedded user data, with exchange and MetaTrader secrets encrypted at rest and omitted from `toJSON()`.
+- [Trade.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Trade.js), [Signal.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Signal.js), and [Strategy.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Strategy.js) define the top-level trading collections.
+- [.gitignore](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/.gitignore) ignores `logs/`, `*.log`, `.env`, `.env.local`, `.env.production`, and `.env.*.local`.
+
+#### Production Evidence - 2026-06-16
+
+- `node --check` passed for `backend/src/routes/audit.js` and `backend/src/server.js`.
+- `npm run build` passed with the existing large frontend chunk warning.
+- Railway deployment `4547e2ed-c7e7-4ba2-be6f-aa91014999b6` completed successfully for the founder database audit endpoint.
+- Production `GET /api/health` returned `200` after deployment.
+- Production `GET /api/audit/database` returned `401` unauthenticated, `403` for the demo user, and `200` for the founder account.
+- Founder database audit reported Mongo connected with top-level collections: `signals`, `strategies`, `trades`, and `users`.
+- Founder database audit aggregate counts reported: `users=7`, `founderUsers=1`, `walletUsers=1`, `usersWithSubscriptions=3`, `usersWithExchangeConnections=5`, `usersWithActiveExchangeConnections=5`, `trades=16`, `paperTrades=16`, `autoTrades=7`, `signals=12`, `ensembleSignals=9`, `trainingGeneratedSignals=9`, and `signalsWithAutoTrades=3`.
+- Founder database audit reported embedded data locations: exchanges at `users.exchanges`, subscriptions at `users.subscription`, wallets at `users.walletAddress`, notifications at `users.notifications`, MetaTrader accounts at `users.metatraderAccounts`, and training output at `signals.metadata.generatedBy` plus `signals.autoTrades`.
+- Founder database audit reported no active push-notification subscriptions yet: `usersWithPushNotifications=0` and `usersWithPushSubscriptions=0`; the notification schema is present but no production user has opted in.
+- Founder database audit reported no saved MetaTrader accounts yet: `usersWithMetatraderAccounts=0`; the schema is present and ready for configured MT4/MT5 accounts.
+
+#### Git And Log Hygiene Evidence - 2026-06-16
+
+- `git check-ignore -v` confirmed `backend/logs/combined.log`, `backend/logs/error.log`, `logs/combined.log`, `logs/error.log`, `.env`, `.env.production`, and `.env.local` are ignored.
+- `git ls-files` confirmed those runtime log and environment files are not tracked.
+- Local runtime log files exist only as ignored workspace artifacts.
+- Tracked-file secret grep found no committed MongoDB credentials, OpenAI keys, GitHub tokens, private keys, or production env values.
+- Tracked-file runtime-data grep found no committed paper-trade/order IDs, concrete user IDs, or user wallet records; address-like matches were public DEX contract constants plus the zero-address founder fallback.
+
+Status: `Ready for next audit gate`. Production Mongo state, embedded data locations, database audit access control, ignored runtime logs, and tracked-file secret/runtime-data hygiene are verified.
+
 ### 9. Security And Production Controls
 
 - Verify rate limiting does not block normal dashboard boot and endpoint polling.

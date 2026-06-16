@@ -6,6 +6,25 @@ This app is a full-stack service: Vite builds the frontend, and the Express back
 
 Use Railway with the included `Dockerfile` and `railway.json`.
 
+Current production target:
+
+```text
+Project: Tradeflow AI
+Project ID: e53a768b-f8f8-4336-829c-6863c8b88d63
+Environment: production
+App service: traderflow-ai
+MongoDB service: MongoDB
+URL: https://traderflow-ai-production.up.railway.app
+```
+
+Current production replica policy:
+
+```text
+App replicas: 1
+Reason: WebSocket order, trade, and portfolio events currently use in-memory broadcast only.
+Increase replicas again only after shared pub/sub fanout is added.
+```
+
 Required Railway service variables:
 
 ```text
@@ -13,6 +32,34 @@ MONGODB_URI=<mongodb atlas or railway mongodb connection string>
 JWT_SECRET=<at least 32 random characters>
 ENCRYPTION_KEY=<64 hex characters>
 FRONTEND_URL=https://<your-railway-domain>
+NODE_ENV=production
+```
+
+### Railway MongoDB helper
+
+If you want Railway to host MongoDB for this app, use the included helper after Railway CLI login:
+
+```bash
+railway login
+RAILWAY_PROJECT_ID=e53a768b-f8f8-4336-829c-6863c8b88d63 \
+RAILWAY_APP_SERVICE=traderflow-ai \
+RAILWAY_MONGO_SERVICE=MongoDB \
+bash scripts/setup-railway-mongo.sh
+```
+
+What it does:
+
+- verifies Railway auth and project context
+- creates a Railway MongoDB service if one does not already exist
+- reads the Mongo connection variable from that service
+- sets `MONGODB_URI` on the app service without printing the raw secret
+
+After that, make sure the app service also has:
+
+```text
+JWT_SECRET
+ENCRYPTION_KEY
+FRONTEND_URL
 NODE_ENV=production
 ```
 

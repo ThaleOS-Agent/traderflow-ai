@@ -2,6 +2,7 @@ import express from 'express';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
 import { autoExecution } from '../services/autoExecution.js';
+import { agentOrchestrator } from '../services/agentOrchestrator.js';
 
 const router = express.Router();
 
@@ -9,7 +10,11 @@ const router = express.Router();
 router.get('/status', authenticateToken, async (req, res) => {
   try {
     const stats = autoExecution.getStats(req.userId);
-    const config = autoExecution.getConfig(req.userId);
+    let config = autoExecution.getConfig(req.userId);
+    if (!config) {
+      await autoExecution.initializeUser(req.userId);
+      config = autoExecution.getConfig(req.userId);
+    }
     
     res.json({
       enabled: config?.enabled || false,
@@ -65,11 +70,24 @@ router.post('/execute', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Opportunity data required' });
     }
     
-    await autoExecution.executeForUser(req.userId, opportunity);
+    const orchestration = await agentOrchestrator.processOpportunityForUser(
+      req.userId,
+      opportunity,
+      'manual_execution'
+    );
+
+    if (!orchestration.approved || orchestration.dispatched === false) {
+      return res.status(422).json({
+        error: 'Execution rejected',
+        reason: orchestration.reason,
+        orchestration
+      });
+    }
     
     res.json({
       message: 'Execution triggered',
-      opportunity: opportunity.symbol
+      opportunity: opportunity.symbol,
+      orchestration
     });
   } catch (error) {
     logger.error('Manual execution error:', error);

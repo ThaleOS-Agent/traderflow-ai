@@ -57,6 +57,8 @@ export function ExchangeConnections() {
   const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState('');
+  const [balanceMessage, setBalanceMessage] = useState('');
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
@@ -75,6 +77,7 @@ export function ExchangeConnections() {
   const save = async () => {
     setSaving(true);
     setError('');
+    setBalanceMessage('');
     try {
       await api.saveExchangeConnection({ ...form, isActive: true, testConnection: false });
       setForm(defaultForm);
@@ -88,18 +91,40 @@ export function ExchangeConnections() {
   };
 
   const activate = async (id: string) => {
+    setBalanceMessage('');
     await api.activateExchangeConnection(id);
     await load();
   };
 
   const deactivate = async (id: string) => {
+    setBalanceMessage('');
     await api.deactivateExchangeConnection(id);
     await load();
   };
 
   const remove = async (id: string) => {
+    setBalanceMessage('');
     await api.deleteExchangeConnection(id);
     await load();
+  };
+
+  const loadBalance = async (exchange: string) => {
+    setBalanceLoading(exchange);
+    setError('');
+    setBalanceMessage('');
+    try {
+      const res = await api.getExchangeBalance(exchange);
+      const entries = Object.entries(res.balances || {});
+      setBalanceMessage(
+        entries.length
+          ? `${venueMeta(exchange).label} balance loaded. ${entries.length} asset balances returned.`
+          : `${venueMeta(exchange).label} balance loaded, but no assets were returned.`
+      );
+    } catch (err) {
+      setError((err as Error).message || 'Failed to load exchange balance');
+    } finally {
+      setBalanceLoading('');
+    }
   };
 
   const openVenueForm = (name: string) => {
@@ -133,6 +158,12 @@ export function ExchangeConnections() {
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 mb-3">
           <AlertCircle className="w-3 h-3 flex-shrink-0" /> {error}
+        </p>
+      )}
+
+      {balanceMessage && (
+        <p className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 mb-3">
+          {balanceMessage}
         </p>
       )}
 
@@ -172,6 +203,15 @@ export function ExchangeConnections() {
                 {connection?.isActive && (
                   <button onClick={() => deactivate(connection.id)} className="text-xs text-yellow-300 hover:text-yellow-200">
                     Disable
+                  </button>
+                )}
+                {connection && (
+                  <button
+                    onClick={() => loadBalance(connection.name)}
+                    disabled={balanceLoading === connection.name}
+                    className="text-xs text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                  >
+                    {balanceLoading === connection.name ? 'Loading…' : 'Balance'}
                   </button>
                 )}
                 {connection && (

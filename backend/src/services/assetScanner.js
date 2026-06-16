@@ -455,6 +455,7 @@ export class AssetScanner {
     const existingIndex = this.opportunities.findIndex(
       o => o.symbol === opportunity.symbol && o.exchange === opportunity.exchange
     );
+    let routedOpportunity = null;
     
     if (existingIndex >= 0) {
       // Update existing opportunity
@@ -471,6 +472,7 @@ export class AssetScanner {
         detectedAt: new Date(),
         occurrences: 1
       });
+      routedOpportunity = this.opportunities[this.opportunities.length - 1];
       
       this.stats.opportunitiesFound++;
       
@@ -485,6 +487,17 @@ export class AssetScanner {
       .filter(o => new Date() - new Date(o.detectedAt) < 3600000) // 1 hour
       .sort((a, b) => b.confidenceScore - a.confidenceScore)
       .slice(0, 100); // Keep top 100
+
+    if (routedOpportunity) {
+      if (this.agentOrchestrator) {
+        await this.agentOrchestrator.processOpportunity(
+          { ...routedOpportunity, marketData },
+          'asset_scanner'
+        );
+      } else if (this.onOpportunity) {
+        await this.onOpportunity({ ...routedOpportunity, marketData });
+      }
+    }
   }
 
   /**

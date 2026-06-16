@@ -40,6 +40,7 @@ interface Trade {
   strategy: string;
   assetType?: string;
   isPaperTrade?: boolean;
+  isAutoTrade?: boolean;
   exchange?: string;
   createdAt?: string;
   openedAt?: string;
@@ -372,7 +373,20 @@ export function Dashboard() {
     }
     if (tradesRes.status === 'fulfilled') {
       const t = tradesRes.value as { trades?: Trade[] };
-      setTrades(t.trades ?? []);
+      const nextTrades = t.trades ?? [];
+      const currentIds = new Set(tradesRef.current.map(trade => trade._id).filter(Boolean));
+      nextTrades
+        .filter(trade => trade._id && !currentIds.has(trade._id))
+        .slice(0, 3)
+        .reverse()
+        .forEach(trade => {
+          appendLiveEvent(
+            trade.isAutoTrade ? 'autoTradeExecuted' : 'order_update',
+            trade,
+            trade.openedAt ? new Date(trade.openedAt).getTime() : Date.now()
+          );
+        });
+      setTrades(nextTrades);
     }
     if (statsRes.status === 'fulfilled') setTradeStats(statsRes.value.stats);
     if (feedRes.status === 'fulfilled') setMarketFeed(feedRes.value.marketData);

@@ -164,6 +164,20 @@ FRONTEND_URL=https://<your-railway-domain>
 NODE_ENV=production
 ```
 
+If Railway is hosting MongoDB for the app, create or attach it with:
+
+```bash
+railway login
+RAILWAY_PROJECT_ID=e53a768b-f8f8-4336-829c-6863c8b88d63 \
+RAILWAY_APP_SERVICE=traderflow-ai \
+RAILWAY_MONGO_SERVICE=MongoDB \
+bash scripts/setup-railway-mongo.sh
+```
+
+The helper script creates the Railway MongoDB service if needed and copies its connection string into the app service `MONGODB_URI` variable without echoing the secret value.
+
+The current production Railway target is project `Tradeflow AI`, service `traderflow-ai`, environment `production`, with the database service named `MongoDB`.
+
 Required GitHub secret for CI/CD:
 
 ```text

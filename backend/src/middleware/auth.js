@@ -138,6 +138,13 @@ export const generateToken = (user) => {
 /**
  * Admin only middleware
  */
+export const hasAdminAccess = (user) => (
+  user?.role === 'admin' ||
+  user?.role === 'founder' ||
+  user?.isFounder === true ||
+  user?.subscription?.tier === 'founder'
+);
+
 export const requireAdmin = (req, res, next) => {
   if (!req.user) {
     return res.status(401).json({
@@ -146,7 +153,7 @@ export const requireAdmin = (req, res, next) => {
     });
   }
   
-  if (req.user.role !== 'admin' && req.user.role !== 'founder') {
+  if (!hasAdminAccess(req.user)) {
     return res.status(403).json({
       success: false,
       error: 'Admin access required'
@@ -156,4 +163,4 @@ export const requireAdmin = (req, res, next) => {
   next();
 };
 
-export default { authenticate, optionalAuth, generateToken, requireAdmin };
+export default { authenticate, optionalAuth, generateToken, requireAdmin, hasAdminAccess };

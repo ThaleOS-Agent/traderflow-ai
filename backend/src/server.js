@@ -31,6 +31,7 @@ import { mlTrainingService } from './services/mlTrainingService.js';
 import { enhancedBacktestEngine } from './services/enhancedBacktestEngine.js';
 import { walletConnectService } from './services/walletConnectService.js';
 import { oandaForexService } from './services/oandaForex.js';
+import { agentOrchestrator } from './services/agentOrchestrator.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -55,6 +56,8 @@ import trainingRoutes from './routes/training.js';
 import walletRoutes from './routes/wallet.js';
 import forexRoutes from './routes/forex.js';
 import mt5Routes from './routes/mt5.js';
+import agentRoutes from './routes/agents.js';
+import auditRoutes from './routes/audit.js';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
 
@@ -98,10 +101,30 @@ setupWebSocket(wss);
 
 // Initialize Trading Engine
 const tradingEngine = new TradingEngine(wss);
-tradingEngine.initialize();
 
 // Initialize Pattern Scanner
 const patternScanner = new PatternScanner(wss);
+
+// Initialize Auto-Execution Engine
+autoExecution.wss = wss;
+
+// Initialize shared agent orchestration before scheduled agents start.
+agentOrchestrator.initialize({
+  wss,
+  tradingEngine,
+  autoExecution,
+  advancedRiskManager,
+  mlPredictor
+});
+
+tradingEngine.agentOrchestrator = agentOrchestrator;
+patternScanner.agentOrchestrator = agentOrchestrator;
+assetScanner.agentOrchestrator = agentOrchestrator;
+arbitrageDetector.agentOrchestrator = agentOrchestrator;
+autoExecution.agentOrchestrator = agentOrchestrator;
+advancedRiskManager.agentOrchestrator = agentOrchestrator;
+
+tradingEngine.initialize();
 patternScanner.initialize();
 
 // Initialize Asset Scanner (with default exchange configs)
@@ -151,13 +174,10 @@ dexIntegration.initialize(['pancakeswap', 'sushiswap', 'uniswap_v3']).then(() =>
   logger.error('Failed to initialize DEX Integration:', err);
 });
 
-// Initialize Auto-Execution Engine
-autoExecution.wss = wss;
-
 // Connect asset scanner to auto-execution
 // When opportunities are found, auto-execute for users with auto-trading enabled
 assetScanner.onOpportunity = async (opportunity) => {
-  await autoExecution.executeOpportunity(opportunity);
+  await agentOrchestrator.processOpportunity(opportunity, 'asset_scanner');
 };
 
 // Routes
@@ -183,6 +203,8 @@ app.use('/api/training', trainingRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/forex', forexRoutes);
 app.use('/api/mt5', mt5Routes);
+app.use('/api/agents', agentRoutes);
+app.use('/api/audit', auditRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -193,6 +215,7 @@ app.get('/api/health', (req, res) => {
     patternScanner: patternScanner.isRunning ? 'running' : 'stopped',
     assetScanner: assetScanner.isRunning ? 'running' : 'stopped',
     autoExecution: autoExecution.isRunning ? 'running' : 'stopped',
+    agentOrchestrator: agentOrchestrator.isInitialized ? 'initialized' : 'not_initialized',
     arbitrageDetector: arbitrageDetector.isRunning ? 'running' : 'stopped',
     mlPredictor: 'initialized',
     notificationService: notificationService.isInitialized ? 'initialized' : 'not_initialized',
@@ -252,5 +275,6 @@ export {
   enhancedBacktestEngine,
   walletConnectService,
   oandaForexService,
+  agentOrchestrator,
   wss 
 };

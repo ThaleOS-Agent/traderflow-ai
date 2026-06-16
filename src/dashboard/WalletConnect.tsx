@@ -183,19 +183,21 @@ export function WalletConnect() {
     };
   }, [wallet]);
 
+  const walletSessionId = walletSession?.id;
+  const walletSessionStatus = walletSession?.status;
+
   useEffect(() => {
-    if (!walletSession || walletSession.status === 'connected') return;
-    const sessionId = walletSession.id;
+    if (!walletSessionId || walletSessionStatus === 'connected') return;
     const timer = window.setInterval(async () => {
       try {
-        const res = await api.getWalletSession(sessionId);
+        const res = await api.getWalletSession(walletSessionId);
         setWalletSession(current => current ? { ...current, ...res.status } : current);
       } catch {
         // Session polling is informational only.
       }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [walletSession?.id, walletSession?.status]);
+  }, [walletSessionId, walletSessionStatus]);
 
   if (!wallet) {
     return (

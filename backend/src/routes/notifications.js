@@ -1,6 +1,6 @@
 import express from 'express';
 import { notificationService } from '../services/notificationService.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, hasAdminAccess } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -122,8 +122,7 @@ router.post('/broadcast', authenticate, async (req, res) => {
   try {
     const { title, body, data } = req.body;
     
-    // Check if user is admin
-    if (!req.user.isAdmin) {
+    if (!hasAdminAccess(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'Admin access required'

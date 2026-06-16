@@ -158,6 +158,10 @@ export class TradingEngine {
       timestamp: Date.now(),
       pairs: Array.from(this.marketData.keys())
     });
+    this.agentOrchestrator?.recordMarketData?.({
+      timestamp: Date.now(),
+      pairs: Array.from(this.marketData.keys())
+    }, 'trading_engine');
   }
 
   // Start signal generation
@@ -202,13 +206,16 @@ export class TradingEngine {
               volatility: enhancedData.volatility
             };
             
-            await this.saveSignal(signal);
+            const savedSignal = await this.saveSignal(signal);
             
             // Broadcast new signal
-            this.broadcast('newSignal', signal);
+            this.broadcast('newSignal', savedSignal?.toJSON?.() || signal);
             
-            // Check for auto-trading
-            await this.checkAutoTrading(signal);
+            if (this.agentOrchestrator) {
+              await this.agentOrchestrator.processSignal(savedSignal?.toObject?.() || signal, 'trading_engine');
+            } else {
+              await this.checkAutoTrading(savedSignal?.toObject?.() || signal);
+            }
             
             logger.info(`Signal generated: ${symbol} ${signal.side} (${strategyName}, confidence: ${signal.confidenceScore}%)`);
             
@@ -231,6 +238,20 @@ export class TradingEngine {
            signal.stopLoss > 0 && 
            signal.takeProfit > 0 &&
            signal.confidenceScore >= 70;
+  }
+
+  capQuantityByPositionValue(quantity, entryPrice, maxPositionValue) {
+    const normalizedQuantity = Number(quantity) || 0;
+    const normalizedPrice = Number(entryPrice) || 0;
+    const normalizedMaxPositionValue = Number(maxPositionValue) || 0;
+
+    if (normalizedQuantity <= 0 || normalizedPrice <= 0) return 0;
+    if (normalizedMaxPositionValue <= 0) return normalizedQuantity;
+
+    const maxQuantity = normalizedMaxPositionValue / normalizedPrice;
+    const capped = Math.min(normalizedQuantity, maxQuantity);
+
+    return Math.floor(capped * 10000) / 10000;
   }
 
   // Save signal to database
@@ -305,12 +326,22 @@ export class TradingEngine {
 
       // Calculate position size
       const accountBalance = user.portfolio?.availableBalance || 10000;
-      const quantity = riskManager.calculatePositionSize(
+      const rawQuantity = riskManager.calculatePositionSize(
         signal.entryPrice,
         signal.stopLoss,
         accountBalance,
         user.tradingSettings?.stopLossPercent || 2
       );
+      const quantity = this.capQuantityByPositionValue(
+        rawQuantity,
+        signal.entryPrice,
+        user.tradingSettings?.maxPositionSize || 0
+      );
+
+      if (quantity <= 0) {
+        logger.warn(`Auto-trade quantity resolved to zero for user ${userId}`);
+        return;
+      }
 
       // Validate trade
       const validation = riskManager.validateTrade(
@@ -424,6 +455,7 @@ export class TradingEngine {
         userId,
         portfolio
       });
+      this.agentOrchestrator?.recordExecution?.(trade.toJSON(), 'trading_engine');
 
       logger.info(`Auto-trade executed for user ${userId}: ${signal.symbol} ${signal.side} on ${exchangeName}`);
 
@@ -614,8 +646,10 @@ export class TradingEngine {
       user.tradingSettings.autoTrading = enabled;
       await user.save();
 
-      // Update local cache
-      if (this.userBots.has(userId)) {
+      // Keep the in-memory execution registry aligned with the persisted user setting.
+      if (!this.userBots.has(userId)) {
+        await this.registerUser(userId);
+      } else {
         this.userBots.get(userId).autoTrading = enabled;
       }
 

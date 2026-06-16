@@ -172,6 +172,7 @@ export const api = {
     takeProfit: number;
     orderType: 'market' | 'limit' | 'stop';
     isPaperTrade?: boolean;
+    exchange?: string;
   }) {
     return request<{ message: string; trade: Record<string, unknown> }>('/trades', {
       method: 'POST',
@@ -356,7 +357,11 @@ export const api = {
   },
 
   async getExchangeConnections() {
-    return request<{ success: boolean; connections: Record<string, unknown>[] }>('/exchange/connections');
+    return request<{
+      success: boolean;
+      supported?: Record<string, unknown>[];
+      connections: Record<string, unknown>[];
+    }>('/exchange/connections');
   },
 
   async saveExchangeConnection(payload: Record<string, unknown>) {
@@ -379,10 +384,21 @@ export const api = {
     });
   },
 
+  async deactivateExchangeConnection(id: string) {
+    return request<{ success: boolean; connection: Record<string, unknown> }>(`/exchange/connections/${id}/deactivate`, {
+      method: 'POST',
+    });
+  },
+
   async deleteExchangeConnection(id: string) {
     return request<{ success: boolean; message: string }>(`/exchange/connections/${id}`, {
       method: 'DELETE',
     });
+  },
+
+  async getExchangeBalance(exchange?: string) {
+    const query = exchange ? `?exchange=${encodeURIComponent(exchange)}` : '';
+    return request<{ success: boolean; exchange: string; balances: Record<string, unknown> }>(`/exchange/balance${query}`);
   },
 
   async getKlines(symbol: string, interval = '1h', exchange?: string) {
@@ -402,6 +418,31 @@ export const api = {
 
   async addExchangeKeys(payload: { exchange: string; apiKey: string; apiSecret: string; isTestnet: boolean }) {
     return request<{ message: string; exchange: Record<string, unknown> }>('/user/exchange-keys', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async startTraining() {
+    return request<{ success: boolean; result: Record<string, unknown> }>('/training/start', {
+      method: 'POST',
+    });
+  },
+
+  async applyTraining() {
+    return request<{ success: boolean; result: Record<string, unknown> }>('/training/apply', {
+      method: 'POST',
+    });
+  },
+
+  async deployMasterStrategy() {
+    return request<{ success: boolean; result: Record<string, unknown> }>('/training/deploy-master', {
+      method: 'POST',
+    });
+  },
+
+  async generateTrainingSignal(payload: Record<string, unknown>) {
+    return request<{ success: boolean; signal: Record<string, unknown> }>('/training/generate-signal', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

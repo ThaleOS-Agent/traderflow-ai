@@ -12,6 +12,15 @@ interface ExchangeConnection {
   hasPassphrase: boolean;
 }
 
+interface SupportedVenue {
+  name: string;
+  label?: string;
+  type?: string;
+  credentialHint?: string;
+  configured?: boolean;
+  connection?: ExchangeConnection | null;
+}
+
 const defaultForm = {
   name: 'binance',
   apiKey: '',
@@ -44,17 +53,22 @@ function venueMeta(name: string) {
 
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
+  const [supportedVenues, setSupportedVenues] = useState<SupportedVenue[]>([]);
   const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [balanceLoading, setBalanceLoading] = useState('');
+  const [balanceMessage, setBalanceMessage] = useState('');
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     try {
       const res = await api.getExchangeConnections();
       setConnections(res.connections as unknown as ExchangeConnection[]);
+      setSupportedVenues((res.supported ?? []) as unknown as SupportedVenue[]);
     } catch {
       setConnections([]);
+      setSupportedVenues([]);
     }
   }, []);
 
@@ -63,6 +77,7 @@ export function ExchangeConnections() {
   const save = async () => {
     setSaving(true);
     setError('');
+    setBalanceMessage('');
     try {
       await api.saveExchangeConnection({ ...form, isActive: true, testConnection: false });
       setForm(defaultForm);
@@ -76,14 +91,57 @@ export function ExchangeConnections() {
   };
 
   const activate = async (id: string) => {
+    setBalanceMessage('');
     await api.activateExchangeConnection(id);
     await load();
   };
 
+  const deactivate = async (id: string) => {
+    setBalanceMessage('');
+    await api.deactivateExchangeConnection(id);
+    await load();
+  };
+
   const remove = async (id: string) => {
+    setBalanceMessage('');
     await api.deleteExchangeConnection(id);
     await load();
   };
+
+  const loadBalance = async (exchange: string) => {
+    setBalanceLoading(exchange);
+    setError('');
+    setBalanceMessage('');
+    try {
+      const res = await api.getExchangeBalance(exchange);
+      const entries = Object.entries(res.balances || {});
+      setBalanceMessage(
+        entries.length
+          ? `${venueMeta(exchange).label} balance loaded. ${entries.length} asset balances returned.`
+          : `${venueMeta(exchange).label} balance loaded, but no assets were returned.`
+      );
+    } catch (err) {
+      setError((err as Error).message || 'Failed to load exchange balance');
+    } finally {
+      setBalanceLoading('');
+    }
+  };
+
+  const openVenueForm = (name: string) => {
+    setForm(f => ({ ...f, name }));
+    setShowForm(true);
+  };
+
+  const venues = supportedVenues.length
+    ? supportedVenues
+    : SUPPORTED_VENUES.map(venue => ({
+      name: venue.value,
+      label: venue.label,
+      type: venue.type.toLowerCase(),
+      credentialHint: venue.hint,
+      configured: connections.some(connection => connection.name === venue.value),
+      connection: connections.find(connection => connection.name === venue.value) ?? null,
+    }));
 
   return (
     <div className="bg-white/5 border border-white/10 rounded-xl p-5">
@@ -103,29 +161,68 @@ export function ExchangeConnections() {
         </p>
       )}
 
+      {balanceMessage && (
+        <p className="text-xs text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-3 py-2 mb-3">
+          {balanceMessage}
+        </p>
+      )}
+
       <div className="space-y-2 mb-3">
-        {connections.map(connection => (
-          <div key={connection.id} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-            <div>
-              <p className="text-white text-xs font-semibold">
-                {venueMeta(connection.name).label} {connection.isActive && <span className="text-green-400">Active</span>}
-              </p>
-              <p className="text-gray-500 text-xs">
-                {venueMeta(connection.name).type} · {connection.isTestnet ? 'Testnet / practice' : 'Live'} · {connection.hasApiKey ? 'API key saved' : 'No key'}
-              </p>
+        {venues.map(venue => {
+          const connection = venue.connection ?? connections.find(item => item.name === venue.name) ?? null;
+          const meta = venueMeta(venue.name);
+          const type = venue.type ?? meta.type;
+          const label = venue.label ?? meta.label;
+          const hint = venue.credentialHint ?? meta.hint;
+
+          return (
+            <div key={venue.name} className="flex items-center justify-between bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+              <div>
+                <p className="text-white text-xs font-semibold">
+                  {label}{' '}
+                  {connection?.isActive && <span className="text-green-400">Active</span>}
+                  {!connection && <span className="text-gray-500">Not configured</span>}
+                </p>
+                <p className="text-gray-500 text-xs">
+                  {type.replace(/\b\w/g, c => c.toUpperCase())} ·{' '}
+                  {connection ? (connection.isTestnet ? 'Testnet / practice' : 'Live') : hint}
+                  {connection && ` · ${connection.hasApiKey ? 'API key saved' : 'No key'}`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {!connection && (
+                  <button onClick={() => openVenueForm(venue.name)} className="text-xs text-cyan-300 hover:text-cyan-200">
+                    Configure
+                  </button>
+                )}
+                {connection && !connection.isActive && (
+                  <button onClick={() => activate(connection.id)} className="text-xs text-cyan-300 hover:text-cyan-200">
+                    Enable
+                  </button>
+                )}
+                {connection?.isActive && (
+                  <button onClick={() => deactivate(connection.id)} className="text-xs text-yellow-300 hover:text-yellow-200">
+                    Disable
+                  </button>
+                )}
+                {connection && (
+                  <button
+                    onClick={() => loadBalance(connection.name)}
+                    disabled={balanceLoading === connection.name}
+                    className="text-xs text-emerald-300 hover:text-emerald-200 disabled:opacity-50"
+                  >
+                    {balanceLoading === connection.name ? 'Loading…' : 'Balance'}
+                  </button>
+                )}
+                {connection && (
+                  <button onClick={() => remove(connection.id)} className="text-gray-500 hover:text-red-400">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              {!connection.isActive && (
-                <button onClick={() => activate(connection.id)} className="text-xs text-cyan-300 hover:text-cyan-200">
-                  Use
-                </button>
-              )}
-              <button onClick={() => remove(connection.id)} className="text-gray-500 hover:text-red-400">
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <button

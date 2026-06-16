@@ -9,8 +9,8 @@ const FEED_SYMBOLS = [
   { symbol: 'EURUSD=X', label: 'EUR/USD', category: 'forex', provider: 'yahoo', displaySymbol: 'EUR_USD' },
   { symbol: 'GBPUSD=X', label: 'GBP/USD', category: 'forex', provider: 'yahoo', displaySymbol: 'GBP_USD' },
   { symbol: 'USDJPY=X', label: 'USD/JPY', category: 'forex', provider: 'yahoo', displaySymbol: 'USD_JPY' },
-  { symbol: 'XAUUSD=X', label: 'Gold', category: 'metal', provider: 'yahoo', displaySymbol: 'XAU_USD' },
-  { symbol: 'XAGUSD=X', label: 'Silver', category: 'metal', provider: 'yahoo', displaySymbol: 'XAG_USD' },
+  { symbol: 'GC=F', label: 'Gold', category: 'metal', provider: 'yahoo', displaySymbol: 'XAU_USD' },
+  { symbol: 'SI=F', label: 'Silver', category: 'metal', provider: 'yahoo', displaySymbol: 'XAG_USD' },
   { symbol: 'CL=F', label: 'WTI Oil', category: 'oil', provider: 'yahoo', displaySymbol: 'WTI' },
   { symbol: 'BZ=F', label: 'Brent Oil', category: 'oil', provider: 'yahoo', displaySymbol: 'BRENT' },
 ];

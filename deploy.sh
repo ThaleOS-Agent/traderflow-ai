@@ -21,6 +21,10 @@ MODE="docker"
 [[ "${1:-}" == "--railway" ]]    && MODE="railway"
 [[ "${1:-}" == "--build-only" ]] && MODE="build"
 
+RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-e53a768b-f8f8-4336-829c-6863c8b88d63}"
+RAILWAY_APP_SERVICE="${RAILWAY_APP_SERVICE:-traderflow-ai}"
+RAILWAY_ENVIRONMENT="${RAILWAY_ENVIRONMENT:-production}"
+
 # ── Pre-flight checks ──────────────────────────────────────────────────────
 
 log "TradeFlow AI deployment starting (mode: $MODE)"
@@ -96,8 +100,24 @@ fi
 if [[ "$MODE" == "railway" ]]; then
   command -v railway >/dev/null 2>&1 || fail "Railway CLI not found. Install: npm i -g @railway/cli"
 
+  if ! railway whoami >/dev/null 2>&1; then
+    fail "Railway CLI is not authenticated. Run: railway login"
+  fi
+
+  if ! grep -q '^MONGODB_URI=' .env 2>/dev/null; then
+    warn "MONGODB_URI is not set in .env."
+    warn "If Railway will host MongoDB, run: bash scripts/setup-railway-mongo.sh"
+  fi
+
   log "Deploying to Railway…"
-  railway up
+  railway link \
+    --project "$RAILWAY_PROJECT_ID" \
+    --service "$RAILWAY_APP_SERVICE" \
+    --environment "$RAILWAY_ENVIRONMENT" >/dev/null
+  railway up \
+    --project "$RAILWAY_PROJECT_ID" \
+    --service "$RAILWAY_APP_SERVICE" \
+    --environment "$RAILWAY_ENVIRONMENT"
   ok "Deployed to Railway!"
   log "Check status: railway status"
   exit 0

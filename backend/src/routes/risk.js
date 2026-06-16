@@ -1,6 +1,6 @@
 import express from 'express';
 import { advancedRiskManager } from '../services/advancedRiskManager.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, hasAdminAccess } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -132,7 +132,7 @@ router.get('/limits', authenticate, async (req, res) => {
  */
 router.post('/limits', authenticate, async (req, res) => {
   try {
-    if (!req.user.isAdmin) {
+    if (!hasAdminAccess(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'Admin access required'
@@ -163,7 +163,7 @@ router.post('/limits', authenticate, async (req, res) => {
  */
 router.post('/emergency-stop/reset', authenticate, async (req, res) => {
   try {
-    if (!req.user.isAdmin) {
+    if (!hasAdminAccess(req.user)) {
       return res.status(403).json({
         success: false,
         error: 'Admin access required'

@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth.js';
 import { ExchangeConnector } from '../services/exchangeConnector.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { getMarketCandles } from '../services/marketFeedService.js';
+import { SUPPORTED_TRADING_VENUES } from '../config/tradingVenues.js';
 
 const router = express.Router();
 
@@ -37,6 +38,19 @@ function sanitizeExchange(exchange) {
     updatedAt: obj.updatedAt
   };
 }
+
+const VENUE_DETAILS = {
+  binance: { label: 'Binance', type: 'exchange', credentialHint: 'API key + secret' },
+  coinbase: { label: 'Coinbase Advanced Trade', type: 'exchange', credentialHint: 'API key + secret + passphrase' },
+  kraken: { label: 'Kraken', type: 'exchange', credentialHint: 'API key + secret' },
+  kucoin: { label: 'KuCoin', type: 'exchange', credentialHint: 'API key + secret + passphrase' },
+  bybit: { label: 'Bybit', type: 'exchange', credentialHint: 'API key + secret' },
+  ftx: { label: 'FTX / Legacy', type: 'exchange', credentialHint: 'Legacy connector' },
+  gemini: { label: 'Gemini', type: 'exchange', credentialHint: 'API key + secret' },
+  bitfinex: { label: 'Bitfinex', type: 'exchange', credentialHint: 'API key + secret' },
+  interactive_brokers: { label: 'Interactive Brokers', type: 'broker', credentialHint: 'OAuth bearer token' },
+  oanda: { label: 'OANDA', type: 'broker', credentialHint: 'Token + account ID' }
+};
 
 function getActiveExchange(user, requestedExchange) {
   const exchanges = user.getDecryptedExchanges?.() || [];
@@ -142,9 +156,18 @@ router.get('/balance', authenticate, async (req, res) => {
 // List saved exchange connections
 router.get('/connections', authenticate, async (req, res) => {
   try {
+    const saved = (req.user.exchanges || []).map(sanitizeExchange);
+    const savedByName = new Map(saved.map(connection => [connection.name, connection]));
+
     res.json({
       success: true,
-      connections: (req.user.exchanges || []).map(sanitizeExchange)
+      supported: SUPPORTED_TRADING_VENUES.map(name => ({
+        name,
+        ...VENUE_DETAILS[name],
+        configured: savedByName.has(name),
+        connection: savedByName.get(name) || null
+      })),
+      connections: saved
     });
   } catch (error) {
     logger.error('List exchange connections error:', error);
@@ -168,30 +191,39 @@ router.post('/connections', authenticate, async (req, res) => {
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ success: false, error: 'Exchange name is required' });
     }
-    if (isActive) {
-      req.user.exchanges.forEach(exchange => { exchange.isActive = false; });
+    const normalizedName = name.trim().toLowerCase();
+    if (!SUPPORTED_TRADING_VENUES.includes(normalizedName)) {
+      return res.status(400).json({ success: false, error: 'Unsupported exchange or broker' });
     }
 
-    req.user.exchanges.push({
-      name: name.toLowerCase(),
+    const existing = req.user.exchanges.find(exchange => exchange.name === normalizedName);
+    const nextConnection = {
+      name: normalizedName,
       apiKey,
       apiSecret,
       passphrase,
-      isTestnet,
-      isActive
-    });
-    const exchange = req.user.exchanges[req.user.exchanges.length - 1];
+      isTestnet: Boolean(isTestnet),
+      isActive: Boolean(isActive)
+    };
+
+    if (existing) {
+      existing.set(nextConnection);
+    } else {
+      req.user.exchanges.push(nextConnection);
+    }
+
+    const exchange = existing || req.user.exchanges[req.user.exchanges.length - 1];
 
     let testResult = null;
     if (testConnection) {
-      const connector = new MultiExchangeConnector(name.toLowerCase(), isTestnet);
+      const connector = new MultiExchangeConnector(normalizedName, Boolean(isTestnet));
       connector.setCredentials(apiKey, apiSecret, passphrase);
       testResult = await connector.getAccount();
     }
 
     await req.user.save();
 
-    res.status(201).json({
+    res.status(existing ? 200 : 201).json({
       success: true,
       connection: sanitizeExchange(exchange),
       testResult
@@ -210,12 +242,30 @@ router.post('/connections/:id/activate', authenticate, async (req, res) => {
       return res.status(404).json({ success: false, error: 'Exchange connection not found' });
     }
 
-    req.user.exchanges.forEach(item => { item.isActive = item._id.toString() === req.params.id; });
+    exchange.isActive = true;
     await req.user.save();
 
     res.json({ success: true, connection: sanitizeExchange(exchange) });
   } catch (error) {
     logger.error('Activate exchange connection error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Deactivate a saved exchange connection
+router.post('/connections/:id/deactivate', authenticate, async (req, res) => {
+  try {
+    const exchange = req.user.exchanges.id(req.params.id);
+    if (!exchange) {
+      return res.status(404).json({ success: false, error: 'Exchange connection not found' });
+    }
+
+    exchange.isActive = false;
+    await req.user.save();
+
+    res.json({ success: true, connection: sanitizeExchange(exchange) });
+  } catch (error) {
+    logger.error('Deactivate exchange connection error:', error);
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -31,7 +31,7 @@ export class AutoExecutionEngine {
       maxDailyTrades: 10,
       maxConcurrentPositions: 5,
       positionSizePercent: 10, // % of available balance per trade
-      strategies: ['xq_trade_m8', 'quantum_ai', 'crypto_bot', 'harmonic', 'breakout', 'volume_spike'],
+      strategies: ['ensemble_master', 'xq_trade_m8', 'quantum_ai', 'crypto_bot', 'harmonic', 'breakout', 'volume_spike'],
       exchanges: [...SUPPORTED_TRADING_VENUES],
       autoClose: true, // Auto close on target/SL
       trailingStop: false
@@ -112,6 +112,10 @@ export class AutoExecutionEngine {
    * Execute opportunity for all users with auto-trading enabled
    */
   async executeOpportunity(opportunity) {
+    if (this.agentOrchestrator && !opportunity?.metadata?.skipOrchestrator) {
+      return this.agentOrchestrator.processOpportunity(opportunity, 'auto_execution_engine');
+    }
+
     const { symbol, exchange, side, entryPrice, stopLoss, takeProfit, confidenceScore, strategy } = opportunity;
     
     logger.info(`Processing opportunity: ${symbol} ${side} (${strategy}, ${confidenceScore}%)`);
@@ -131,100 +135,143 @@ export class AutoExecutionEngine {
   }
 
   /**
-   * Execute trade for specific user
+   * Build a pre-trade execution plan without placing an order.
+   * The agent orchestrator uses this to run one shared advanced risk decision.
    */
-  async executeForUser(userId, opportunity) {
-    // Initialize user engine if not exists
+  async previewExecutionPlan(userId, opportunity) {
     if (!this.userEngines.has(userId)) {
       const initialized = await this.initializeUser(userId);
-      if (!initialized) return;
+      if (!initialized) {
+        return { executable: false, reason: 'Auto-execution user initialization failed' };
+      }
     }
 
     const engine = this.userEngines.get(userId);
     const { config, exchanges, riskManager } = engine;
 
-    // Check if auto-execution is enabled
-    if (!config.enabled) return;
-
-    // Check daily trade limit
-    if (engine.todayTrades >= config.maxDailyTrades) {
-      logger.warn(`User ${userId} daily trade limit reached`);
-      return;
+    if (!config.enabled) {
+      return { executable: false, reason: 'Auto-execution disabled' };
     }
 
-    // Reset daily counter if new day
+    if (engine.todayTrades >= config.maxDailyTrades) {
+      return { executable: false, reason: 'Daily trade limit reached' };
+    }
+
     if (new Date().toDateString() !== engine.lastReset) {
       engine.todayTrades = 0;
       engine.lastReset = new Date().toDateString();
     }
 
-    // Check confidence threshold
-    if (opportunity.confidenceScore < config.minConfidence) {
-      logger.info(`Opportunity confidence (${opportunity.confidenceScore}%) below threshold for user ${userId}`);
-      return;
+    if (Number(opportunity.confidenceScore || 0) < config.minConfidence) {
+      return { executable: false, reason: 'Opportunity confidence below user threshold' };
     }
 
-    // Check if strategy is allowed
     const strategyName = normalizeStrategyName(opportunity.strategy);
     if (!config.strategies.includes(strategyName) && !config.strategies.includes('all')) {
-      return;
+      return { executable: false, reason: 'Strategy not enabled for user' };
     }
 
     const exchangeName = normalizeTradingVenue(opportunity.exchange);
     if (!config.exchanges.includes(exchangeName)) {
-      logger.warn(`Exchange ${exchangeName} is not enabled for user ${userId}`);
-      return;
+      return { executable: false, reason: 'Exchange not enabled for user' };
     }
 
     const connector = exchanges.get(exchangeName);
     const isPaperTrade = config.paperTrading;
-    
+
     if (!isPaperTrade && (!connector || !connector.apiKey)) {
-      logger.warn(`Live exchange ${exchangeName} not configured for user ${userId}`);
-      return;
+      return { executable: false, reason: 'Live exchange credentials not configured' };
     }
 
-    // Get user account info
     const user = await User.findById(userId);
-    const accountBalance = user.portfolio?.availableBalance || 10000;
+    if (!user) {
+      return { executable: false, reason: 'User not found' };
+    }
 
-    // Get open positions
+    const accountBalance = user.portfolio?.availableBalance || 10000;
     const openPositions = await Trade.find({
       userId,
       status: { $in: ['open', 'pending'] }
     });
 
-    // Check position limit
     if (openPositions.length >= config.maxConcurrentPositions) {
-      logger.warn(`User ${userId} max positions reached`);
-      return;
+      return { executable: false, reason: 'Max concurrent positions reached' };
     }
 
-    // Calculate position size
     const positionSize = this.calculatePositionSize(
       accountBalance,
       config.positionSizePercent,
       opportunity.entryPrice,
-      opportunity.stopLoss
+      opportunity.stopLoss,
+      user.tradingSettings?.maxPositionSize || 0
     );
 
-    // Validate with risk manager
-    const validation = riskManager.validateTrade(
-      {
-        symbol: opportunity.symbol,
-        side: opportunity.side,
-        entryPrice: opportunity.entryPrice,
-        stopLoss: opportunity.stopLoss,
-        takeProfit: opportunity.takeProfit,
-        quantity: positionSize
-      },
+    if (positionSize <= 0) {
+      return { executable: false, reason: 'Position size resolved to zero' };
+    }
+
+    return {
+      executable: true,
+      engine,
+      config,
+      exchanges,
+      riskManager,
+      connector,
+      user,
       accountBalance,
-      openPositions
-    );
+      openPositions,
+      quantity: positionSize,
+      exchangeName,
+      strategyName,
+      isPaperTrade
+    };
+  }
 
-    if (!validation.isValid) {
-      logger.warn(`Risk validation failed for user ${userId}:`, validation.errors);
+  /**
+   * Execute trade for specific user
+   */
+  async executeForUser(userId, opportunity, riskDecision = null) {
+    const plan = await this.previewExecutionPlan(userId, opportunity);
+    if (!plan.executable) {
+      logger.warn(`Auto-execution skipped for user ${userId}: ${plan.reason}`);
       return;
+    }
+
+    const {
+      engine,
+      riskManager,
+      connector,
+      accountBalance,
+      openPositions,
+      quantity: positionSize,
+      exchangeName,
+      strategyName,
+      isPaperTrade
+    } = plan;
+
+    if (riskDecision && !riskDecision.approved) {
+      logger.warn(`Shared risk decision rejected ${opportunity.symbol} for user ${userId}: ${riskDecision.reason}`);
+      return;
+    }
+
+    if (!riskDecision) {
+      const validation = riskManager.validateTrade(
+        {
+          symbol: opportunity.symbol,
+          side: opportunity.side,
+          entryPrice: opportunity.entryPrice,
+          stopLoss: opportunity.stopLoss,
+          takeProfit: opportunity.takeProfit,
+          quantity: positionSize
+        },
+        accountBalance,
+        openPositions
+      );
+
+      if (!validation.isValid) {
+        logger.warn(`Risk validation failed for user ${userId}:`, validation.errors);
+        return;
+      }
     }
 
     // Execute the trade
@@ -254,6 +301,7 @@ export class AutoExecutionEngine {
       // Save trade record
       const trade = new Trade({
         userId,
+        signalId: opportunity._id,
         symbol: opportunity.symbol,
         assetType: opportunity.assetType || 'crypto',
         side: opportunity.side,
@@ -273,25 +321,38 @@ export class AutoExecutionEngine {
       await trade.save();
       const portfolio = await recalculatePortfolio(userId);
 
-      // Save signal record
-      const signal = new Signal({
-        signalId: `SIG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        symbol: opportunity.symbol,
-        assetType: opportunity.assetType || 'crypto',
-        side: opportunity.side,
-        entryPrice: opportunity.entryPrice,
-        stopLoss: opportunity.stopLoss,
-        takeProfit: opportunity.takeProfit,
-        confidence: opportunity.confidence,
-        confidenceScore: opportunity.confidenceScore,
-        strategy: strategyName,
-        analysis: opportunity.analysis,
-        status: 'executed',
-        executedAt: new Date(),
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
-      });
+      if (opportunity._id) {
+        await Signal.findByIdAndUpdate(opportunity._id, {
+          status: 'executed',
+          executedAt: new Date(),
+          $push: {
+            autoTrades: {
+              userId,
+              tradeId: trade._id,
+              executedAt: new Date()
+            }
+          }
+        });
+      } else {
+        const signal = new Signal({
+          signalId: `SIG_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+          symbol: opportunity.symbol,
+          assetType: opportunity.assetType || 'crypto',
+          side: opportunity.side,
+          entryPrice: opportunity.entryPrice,
+          stopLoss: opportunity.stopLoss,
+          takeProfit: opportunity.takeProfit,
+          confidence: opportunity.confidence,
+          confidenceScore: opportunity.confidenceScore,
+          strategy: strategyName,
+          analysis: opportunity.analysis,
+          status: 'executed',
+          executedAt: new Date(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+        });
 
-      await signal.save();
+        await signal.save();
+      }
 
       // Update user stats
       engine.todayTrades++;
@@ -333,6 +394,8 @@ export class AutoExecutionEngine {
         isPaperTrade
       });
 
+      this.agentOrchestrator?.recordExecution?.(trade.toJSON(), 'auto_execution_engine');
+
       logger.info(`Auto-trade executed for user ${userId}: ${opportunity.symbol} ${opportunity.side} @ ${orderResult.price || opportunity.entryPrice}`);
 
     } catch (error) {
@@ -344,22 +407,28 @@ export class AutoExecutionEngine {
   /**
    * Calculate position size based on risk parameters
    */
-  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss) {
+  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss, maxPositionValue = 0) {
     const riskAmount = accountBalance * (positionSizePercent / 100);
     const priceRisk = Math.abs(entryPrice - stopLoss);
     
     if (priceRisk === 0) return 0;
     
     const quantity = riskAmount / priceRisk;
+    const maxQuantity = maxPositionValue > 0 && entryPrice > 0
+      ? maxPositionValue / entryPrice
+      : quantity;
+    const cappedQuantity = Math.min(quantity, maxQuantity);
     
-    // Round based on price magnitude
+    // Round based on price magnitude without zeroing high-priced fractional assets.
     if (entryPrice < 1) {
-      return Math.floor(quantity * 10000) / 10000; // 4 decimals
+      return Math.floor(cappedQuantity * 10000) / 10000; // 4 decimals
     } else if (entryPrice < 100) {
-      return Math.floor(quantity * 100) / 100; // 2 decimals
+      return Math.floor(cappedQuantity * 100) / 100; // 2 decimals
+    } else if (entryPrice >= 10000) {
+      return Math.floor(cappedQuantity * 100000) / 100000; // 5 decimals
     }
     
-    return Math.floor(quantity * 10) / 10; // 1 decimal
+    return Math.floor(cappedQuantity * 1000) / 1000; // 3 decimals
   }
 
   /**
@@ -415,6 +484,24 @@ export class AutoExecutionEngine {
           sanitizedConfig.maxDailyTrades = maxDailyTrades;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'maxConcurrentPositions')) {
+        const maxConcurrentPositions = Number(newConfig.maxConcurrentPositions);
+        if (Number.isInteger(maxConcurrentPositions) && maxConcurrentPositions > 0) {
+          sanitizedConfig.maxConcurrentPositions = maxConcurrentPositions;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'minConfidence')) {
+        const minConfidence = Number(newConfig.minConfidence);
+        if (Number.isFinite(minConfidence) && minConfidence >= 0 && minConfidence <= 100) {
+          sanitizedConfig.minConfidence = minConfidence;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(newConfig, 'positionSizePercent')) {
+        const positionSizePercent = Number(newConfig.positionSizePercent);
+        if (Number.isFinite(positionSizePercent) && positionSizePercent > 0 && positionSizePercent <= 100) {
+          sanitizedConfig.positionSizePercent = positionSizePercent;
+        }
+      }
       if (Array.isArray(newConfig.exchanges)) {
         sanitizedConfig.exchanges = Array.from(new Set(
           newConfig.exchanges
@@ -433,6 +520,10 @@ export class AutoExecutionEngine {
       ...engine.config,
       ...sanitizedConfig
     };
+
+    if (Object.prototype.hasOwnProperty.call(sanitizedConfig, 'maxConcurrentPositions')) {
+      engine.riskManager.settings.maxPositions = sanitizedConfig.maxConcurrentPositions;
+    }
 
     // Update user in database
     await User.findByIdAndUpdate(userId, {

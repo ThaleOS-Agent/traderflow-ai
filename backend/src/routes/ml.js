@@ -1,5 +1,6 @@
 import express from 'express';
 import { mlPredictor } from '../services/mlPredictor.js';
+import { agentOrchestrator } from '../services/agentOrchestrator.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -30,6 +31,7 @@ router.post('/predict/price-direction', authenticate, async (req, res) => {
     };
     
     const prediction = await mlPredictor.predictPriceDirection(marketData);
+    agentOrchestrator.recordMlOutput(prediction, 'ml_predictor');
     
     res.json({
       success: true,
@@ -60,10 +62,22 @@ router.post('/score-opportunity', authenticate, async (req, res) => {
     }
     
     const score = await mlPredictor.scoreOpportunity(opportunity, marketData);
+    let orchestration = null;
+
+    if (req.body.routeToOrchestrator === true) {
+      orchestration = await agentOrchestrator.processMlOpportunity(
+        { opportunity, score },
+        'ml_predictor',
+        req.userId
+      );
+    } else {
+      agentOrchestrator.recordMlOutput({ score, opportunity }, 'ml_predictor');
+    }
     
     res.json({
       success: true,
-      score
+      score,
+      orchestration
     });
   } catch (error) {
     res.status(500).json({
@@ -98,6 +112,11 @@ router.post('/forecast-volatility', authenticate, async (req, res) => {
     };
     
     const forecast = await mlPredictor.forecastVolatility(marketData);
+    agentOrchestrator.recordMlOutput({
+      symbol,
+      model: 'volatilityForecast',
+      forecast
+    }, 'ml_predictor');
     
     res.json({
       success: true,

@@ -452,6 +452,10 @@ export class AutoExecutionEngine {
       ...sanitizedConfig
     };
 
+    if (Object.prototype.hasOwnProperty.call(sanitizedConfig, 'maxConcurrentPositions')) {
+      engine.riskManager.settings.maxPositions = sanitizedConfig.maxConcurrentPositions;
+    }
+
     // Update user in database
     await User.findByIdAndUpdate(userId, {
       'tradingSettings.autoTrading': Boolean(engine.config.enabled),

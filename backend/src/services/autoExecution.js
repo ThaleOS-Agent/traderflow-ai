@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import mongoose from 'mongoose';
 import { Trade } from '../models/Trade.js';
 import { User } from '../models/User.js';
 import { Signal } from '../models/Signal.js';
@@ -298,10 +299,17 @@ export class AutoExecutionEngine {
         });
       }
 
+      const safeSignalId = (
+        typeof opportunity?._id === 'string' &&
+        mongoose.Types.ObjectId.isValid(opportunity._id)
+      )
+        ? new mongoose.Types.ObjectId(opportunity._id).toString()
+        : null;
+
       // Save trade record
       const trade = new Trade({
         userId,
-        signalId: opportunity._id,
+        signalId: safeSignalId,
         symbol: opportunity.symbol,
         assetType: opportunity.assetType || 'crypto',
         side: opportunity.side,
@@ -321,8 +329,8 @@ export class AutoExecutionEngine {
       await trade.save();
       const portfolio = await recalculatePortfolio(userId);
 
-      if (opportunity._id) {
-        await Signal.findByIdAndUpdate(opportunity._id, {
+      if (safeSignalId) {
+        await Signal.findByIdAndUpdate(safeSignalId, {
           status: 'executed',
           executedAt: new Date(),
           $push: {

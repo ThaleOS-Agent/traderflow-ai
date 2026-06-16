@@ -132,9 +132,19 @@ export class MultiExchangeConnector {
     return crypto.createHmac('sha256', this.apiSecret).update(strForSign).digest('base64');
   }
 
-  generateBybitSignature(params, timestamp) {
-    const paramStr = Object.keys(params).sort().map(key => `${key}=${params[key]}`).join('&');
-    return crypto.createHmac('sha256', this.apiSecret).update(timestamp + this.apiKey + paramStr).digest('hex');
+    generateBybitSignature({ method = "GET", path = "/", query = "", body = "" }, timestamp) {
+    const queryString = typeof query === "string" ? query : new URLSearchParams(query).toString();
+    const prehash = [
+      timestamp,
+      method.toUpperCase(),
+      path,
+      queryString ? "?" + queryString : "",
+      body || ""
+    ].join("");
+
+    // CodeQL: This is an API request signature per Bybit v5 spec, not a password hash.
+    // See https://bybit-exchange.github.io/docs/v5/authentication/rest-api-sig
+    return crypto.createHmac("sha256", this.apiSecret).update(prehash).digest("hex");
   }
 
   // Make authenticated request

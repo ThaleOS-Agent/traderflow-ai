@@ -99,8 +99,12 @@ On pushes to `main`, and manual `workflow_dispatch` runs, it deploys to Railway 
 Required GitHub repository secret:
 
 ```text
-RAILWAY_TOKEN=<Railway account or project token>
+RAILWAY_TOKEN=<Railway project token>
 ```
+
+The workflow reads Railway's project token variable, `RAILWAY_TOKEN`.
+If you use an account or workspace token instead, configure the workflow and
+secret name explicitly for that token type before deploying.
 
 Required GitHub repository variable:
 

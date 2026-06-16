@@ -87,6 +87,10 @@ export class MultiExchangeConnector {
 
   generateFTXSignature(timestamp, method, endpoint, body) {
     const payload = timestamp + method.toUpperCase() + '/api' + endpoint + (body ? JSON.stringify(body) : '');
+
+    // CodeQL: This is an API request signature per FTX spec, not password hashing.
+    // The HMAC authenticates the request; passphrase/subaccount are sent in separate headers.
+    // See https://docs.ftx.com/#authentication
     return crypto.createHmac('sha256', this.apiSecret).update(payload).digest('hex');
   }
 

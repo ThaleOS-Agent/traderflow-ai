@@ -5,6 +5,19 @@ import { requireFeature, requireTier } from '../middleware/paywall.js';
 
 const router = express.Router();
 
+function hasActiveOandaConnection(user) {
+  return (user?.exchanges || []).some(exchange => exchange.name === 'oanda' && exchange.isActive);
+}
+
+function requireActiveOandaConnection(req, res) {
+  if (hasActiveOandaConnection(req.user)) return true;
+  res.status(400).json({
+    success: false,
+    error: 'Live OANDA execution requires a saved active OANDA connection'
+  });
+  return false;
+}
+
 /**
  * @route POST /api/forex/initialize
  * @desc Initialize OANDA connection
@@ -237,6 +250,7 @@ router.get('/positionbook/:instrument', authenticate, requireTier('platinum'), a
 router.post('/order/market', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units, stopLoss, takeProfit, trailingStop } = req.body;
+    if (!requireActiveOandaConnection(req, res)) return;
     
     if (!instrument || !units) {
       return res.status(400).json({
@@ -273,6 +287,7 @@ router.post('/order/market', authenticate, requireTier('platinum'), async (req, 
 router.post('/order/limit', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units, price, stopLoss, takeProfit } = req.body;
+    if (!requireActiveOandaConnection(req, res)) return;
     
     if (!instrument || !units || !price) {
       return res.status(400).json({
@@ -309,6 +324,7 @@ router.post('/order/limit', authenticate, requireTier('platinum'), async (req, r
 router.post('/position/close', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units } = req.body;
+    if (!requireActiveOandaConnection(req, res)) return;
     
     if (!instrument) {
       return res.status(400).json({
@@ -386,6 +402,7 @@ router.get('/orders/pending', authenticate, requireTier('platinum'), async (req,
 router.post('/order/cancel', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { orderId } = req.body;
+    if (!requireActiveOandaConnection(req, res)) return;
     
     if (!orderId) {
       return res.status(400).json({

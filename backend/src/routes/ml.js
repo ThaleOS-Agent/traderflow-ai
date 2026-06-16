@@ -95,11 +95,19 @@ router.post('/score-opportunity', authenticate, async (req, res) => {
 router.post('/forecast-volatility', authenticate, async (req, res) => {
   try {
     const { symbol, assetType, prices, highs, lows } = req.body;
+    const MAX_PRICE_POINTS = 10000;
     
     if (!symbol || !prices) {
       return res.status(400).json({
         success: false,
         error: 'Missing required parameters'
+      });
+    }
+
+    if (!Array.isArray(prices) || prices.length < 2 || prices.length > MAX_PRICE_POINTS) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid prices: expected an array with 2 to 10000 elements'
       });
     }
     

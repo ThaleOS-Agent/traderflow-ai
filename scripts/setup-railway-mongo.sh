@@ -24,13 +24,6 @@ if ! railway whoami >/dev/null 2>&1; then
   fail "Railway CLI is not authenticated. Run: railway login"
 fi
 
-PROJECT_ARGS=()
-if [[ -n "$PROJECT_ID" ]]; then
-  PROJECT_ARGS+=(--project "$PROJECT_ID")
-fi
-
-ENV_ARGS=(--environment "$ENVIRONMENT")
-
 log "Ensuring Railway project context is available..."
 if [[ -n "$PROJECT_ID" ]]; then
   railway link --project "$PROJECT_ID" --environment "$ENVIRONMENT" >/dev/null 2>&1 || true
@@ -41,17 +34,31 @@ else
 fi
 
 log "Checking for existing MongoDB service..."
-services_json="$(railway service list "${PROJECT_ARGS[@]}" "${ENV_ARGS[@]}" --json)"
+if [[ -n "$PROJECT_ID" ]]; then
+  services_json="$(railway service list --project "$PROJECT_ID" --environment "$ENVIRONMENT" --json)"
+else
+  services_json="$(railway service list --environment "$ENVIRONMENT" --json)"
+fi
+
 if echo "$services_json" | jq -e --arg name "$MONGO_SERVICE" '.[] | select(.name == $name)' >/dev/null; then
   ok "MongoDB service '$MONGO_SERVICE' already exists."
 else
   log "Creating Railway MongoDB service '$MONGO_SERVICE'..."
-  railway add --database mongo --service "$MONGO_SERVICE" "${PROJECT_ARGS[@]}" --json >/dev/null
+  if [[ -n "$PROJECT_ID" ]]; then
+    railway add --database mongo --service "$MONGO_SERVICE" --project "$PROJECT_ID" --json >/dev/null
+  else
+    railway add --database mongo --service "$MONGO_SERVICE" --json >/dev/null
+  fi
   ok "MongoDB service created."
 fi
 
 log "Reading MongoDB service variables..."
-mongo_vars="$(railway variable list --service "$MONGO_SERVICE" "${PROJECT_ARGS[@]}" "${ENV_ARGS[@]}" --json)"
+if [[ -n "$PROJECT_ID" ]]; then
+  mongo_vars="$(railway variable list --service "$MONGO_SERVICE" --project "$PROJECT_ID" --environment "$ENVIRONMENT" --json)"
+else
+  mongo_vars="$(railway variable list --service "$MONGO_SERVICE" --environment "$ENVIRONMENT" --json)"
+fi
+
 source_key="$(echo "$mongo_vars" | jq -r '
   if has("MONGODB_URI") then "MONGODB_URI"
   elif has("MONGO_URL") then "MONGO_URL"
@@ -67,7 +74,11 @@ mongo_uri="$(echo "$mongo_vars" | jq -r --arg key "$source_key" '.[$key] // empt
 [[ -n "$mongo_uri" && "$mongo_uri" != "null" ]] || fail "Mongo connection variable '$source_key' is empty."
 
 log "Setting MONGODB_URI on app service '$APP_SERVICE' from '$MONGO_SERVICE:$source_key'..."
-printf '%s' "$mongo_uri" | railway variable set MONGODB_URI --stdin --service "$APP_SERVICE" "${PROJECT_ARGS[@]}" "${ENV_ARGS[@]}" >/dev/null
+if [[ -n "$PROJECT_ID" ]]; then
+  printf '%s' "$mongo_uri" | railway variable set MONGODB_URI --stdin --service "$APP_SERVICE" --project "$PROJECT_ID" --environment "$ENVIRONMENT" >/dev/null
+else
+  printf '%s' "$mongo_uri" | railway variable set MONGODB_URI --stdin --service "$APP_SERVICE" --environment "$ENVIRONMENT" >/dev/null
+fi
 ok "MONGODB_URI set on app service."
 
 cat <<EOF

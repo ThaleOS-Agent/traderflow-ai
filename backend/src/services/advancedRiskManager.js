@@ -265,13 +265,18 @@ export class AdvancedRiskManager {
    * Calculate volatility
    */
   calculateVolatility(marketData) {
-    if (!marketData || !marketData.prices || marketData.prices.length < 20) {
+    const MAX_PRICE_POINTS = 1000;
+    const prices = Array.isArray(marketData?.prices)
+      ? marketData.prices.slice(0, MAX_PRICE_POINTS)
+      : null;
+
+    if (!prices || prices.length < 20) {
       return 0.05; // Default 5%
     }
     
     const returns = [];
-    for (let i = 1; i < marketData.prices.length; i++) {
-      returns.push((marketData.prices[i] - marketData.prices[i - 1]) / marketData.prices[i - 1]);
+    for (let i = 1; i < prices.length; i++) {
+      returns.push((prices[i] - prices[i - 1]) / prices[i - 1]);
     }
     
     const mean = returns.reduce((a, b) => a + b, 0) / returns.length;

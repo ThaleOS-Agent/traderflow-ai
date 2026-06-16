@@ -247,6 +247,39 @@ Status: `Ready for next audit gate`. Production Mongo state, embedded data locat
 - Verify exchange API keys are trading-only, withdrawal-disabled, and IP-restricted where supported.
 - Verify emergency stop/risk reset routes require founder/admin access.
 
+#### Code Evidence - 2026-06-16
+
+- [server.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/server.js) enables Helmet, CORS with credentials, global `/api` rate limiting, and stricter `/api/auth` rate limiting.
+- [validateEnv.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/config/validateEnv.js) requires `JWT_SECRET` and `MONGODB_URI`, and rejects production JWT secrets shorter than 32 characters.
+- [trades.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/trades.js) requires explicit live mode plus a saved active exchange connection for live crypto/stock execution and a saved MT4/MT5 connection for live forex/commodity execution.
+- [mt5.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/mt5.js) now blocks direct MT4/MT5 order and close writes unless the user has a saved MT4/MT5 account.
+- [forex.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/forex.js) now blocks OANDA order, close, and cancel writes unless the user has a saved active OANDA connection.
+- [risk.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/risk.js) protects risk-limit updates and emergency-stop reset with `hasAdminAccess(req.user)`.
+- [audit.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/audit.js) protects production database audit output with `authenticate` plus `requireAdmin`.
+
+#### Production Evidence - 2026-06-16
+
+- `node --check` passed for `backend/src/routes/mt5.js` and `backend/src/routes/forex.js`.
+- `npm run build` passed with the existing large frontend chunk warning.
+- Railway deployment `2317c985-2752-40ef-967a-cfb61c4b12a8` completed successfully for the broker-execution security fix.
+- Production `GET /api/health` returned `200`.
+- Production Helmet/security headers were present: `x-frame-options=SAMEORIGIN`, Content Security Policy present, `x-content-type-options=nosniff`, and Strict Transport Security present.
+- Production CORS response on `/api/health` returned configured origin `https://tradeflow.thaleos.network` and `access-control-allow-credentials=true`.
+- Production rate-limit headers were present on `/api/health`: `ratelimit-limit=100`, `ratelimit-remaining=99`, and `ratelimit-reset=900`.
+- Production invalid JWT access to `/api/user/profile` returned `403`.
+- Production audit route access control returned `401` unauthenticated, `403` for demo user, and `200` for founder.
+- Founder dashboard polling endpoints all returned `200` in one normal boot pass: overview, strategy results, AI learning, live feed, trades, signals, exchange connections, and portfolio.
+- Founder and demo read access to `GET /api/risk/limits` returned `200`; mutation/reset routes are covered by code-level admin guards and were not invoked in production to avoid changing safety controls.
+
+#### Safety Notes - 2026-06-16
+
+- Direct production write probes against emergency-stop reset and live-order endpoints were intentionally not executed during this gate because they would mutate safety state or touch execution paths.
+- The security fix removed the direct fallback from MT4/MT5 write routes to global app-level connectors; live MT4/MT5 writes now require user-saved broker credentials.
+- OANDA write routes now require a saved active OANDA user connection before calling the OANDA service.
+- Exchange API-key trading-only, withdrawal-disabled, and IP-restricted status must still be verified out-of-band in each external exchange/broker dashboard when real live credentials are entered; the application stores only encrypted credentials and sanitized connection metadata.
+
+Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-limit headers, dashboard polling, founder/admin access control, and live-execution credential guards are verified.
+
 ### 10. CI/CD And Railway
 
 - Verify PR checks pass: build, validation, and CodeQL.

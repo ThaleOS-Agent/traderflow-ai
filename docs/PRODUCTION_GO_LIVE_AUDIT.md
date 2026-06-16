@@ -48,6 +48,28 @@ Status: `Ready for next audit gate` locally. Railway verification remains part o
 - Verify forex/commodity live orders require a saved MT4/MT5 connection.
 - Verify paper orders can record selected venue without using live credentials.
 
+#### Code And UI Evidence - 2026-06-16
+
+- Backend supported venue list is centralized in [tradingVenues.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/config/tradingVenues.js) and includes all 10 implemented venues.
+- `/api/exchange/connections` returns both `supported` venue metadata and `connections` saved for the user.
+- `/api/exchange/connections` rejects unsupported venue names before persistence.
+- Save, enable, disable, and delete routes exist for saved connections.
+- Manual order form in [index.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/index.tsx) includes a venue selector and passes the selected venue to `/api/trades`.
+- `POST /api/trades` blocks live crypto/stock execution when the selected venue is not active.
+- `POST /api/trades` blocks live forex/commodity execution when no MT4/MT5 connection exists.
+- `POST /api/trades` allows paper trades to record the selected venue without live credentials.
+- [ExchangeConnections.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/ExchangeConnections.tsx) now shows configured and unconfigured venues and exposes save, enable, disable, delete, and balance actions.
+- [api.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/api.ts) now exposes the saved-connection balance call used by the dashboard panel.
+
+#### Runtime Status
+
+- Local runtime verification is partially blocked.
+- Docker port forwarding still occupies `localhost:3001`, but the containerized app behind it is not reachable from this sandbox.
+- Direct Docker inspection is blocked by the current environment, and local standalone backend startup is blocked by the absence of a reachable MongoDB instance outside Docker.
+- Because of that, full endpoint execution for save, enable, disable, delete, and balance could not be completed in this turn against a live local stack.
+
+Status: `Partial`. Code paths and dashboard surface are aligned, but live local endpoint verification still needs a reachable app plus MongoDB runtime.
+
 ### 3. Live Orders And Portfolio Updates
 
 - Verify `POST /api/trades` creates a paper trade, broadcasts `tradeExecuted`, `orderExecuted`, and `portfolio_update`, and updates dashboard portfolio stats.

@@ -396,6 +396,11 @@ export const api = {
     });
   },
 
+  async getExchangeBalance(exchange?: string) {
+    const query = exchange ? `?exchange=${encodeURIComponent(exchange)}` : '';
+    return request<{ success: boolean; exchange: string; balances: Record<string, unknown> }>(`/exchange/balance${query}`);
+  },
+
   async getKlines(symbol: string, interval = '1h', exchange?: string) {
     const q = new URLSearchParams({ interval, limit: '200' });
     if (exchange) q.set('exchange', exchange);

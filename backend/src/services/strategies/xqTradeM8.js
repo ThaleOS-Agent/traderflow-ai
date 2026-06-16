@@ -125,7 +125,7 @@ export class XQTradeM8Strategy extends BaseStrategy {
       };
       
     } catch (error) {
-      console.error(`Error generating XQ Trade M8 signal for ${marketData.symbol}:`, error);
+      console.error('Error generating XQ Trade M8 signal for %s:', marketData?.symbol, error);
       return null;
     }
   }

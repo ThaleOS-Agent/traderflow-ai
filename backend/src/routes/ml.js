@@ -13,11 +13,26 @@ const router = express.Router();
 router.post('/predict/price-direction', authenticate, async (req, res) => {
   try {
     const { symbol, assetType, prices, volumes, highs, lows } = req.body;
+    const MAX_PRICE_POINTS = 10000;
     
     if (!symbol || !prices || !volumes) {
       return res.status(400).json({
         success: false,
         error: 'Missing required parameters'
+      });
+    }
+
+    if (!Array.isArray(prices) || prices.length < 2 || prices.length > MAX_PRICE_POINTS) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid prices: expected an array with 2 to 10000 elements'
+      });
+    }
+
+    if (!Array.isArray(volumes) || volumes.length !== prices.length || volumes.length > MAX_PRICE_POINTS) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid volumes: expected an array matching prices length (max 10000)'
       });
     }
     

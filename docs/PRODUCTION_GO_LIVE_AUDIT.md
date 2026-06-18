@@ -310,6 +310,12 @@ Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-
 - Production landing page `/` returned `200 text/html; charset=UTF-8`.
 - Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
 - Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
+- Follow-up Railway redeploy `d97d9819-e63b-4f8f-8e41-76d64cab1141` completed successfully on `2026-06-18`.
+- Production `GET /api/health` after the follow-up redeploy returned `200` with `tradingEngine=running`, `patternScanner=running`, `agentOrchestrator=initialized`, `mlPredictor=initialized`, `dexIntegration=initialized`, and `advancedRiskManager=initialized`.
+- Production landing page `/` returned `200` and rendered founder access, portfolio overview, live market feed, and AI-learning cards.
+- Production dashboard route `/dashboard` returned `200` and rendered the same authenticated founder view.
+- Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected successfully and returned the initial `connected` event on the refreshed deployment.
+- GitHub Actions deploy secret `RAILWAY_TOKEN` still needs a refreshed Railway-issued deploy token; the direct Railway redeploy was used to restore production while that secret remains unresolved.
 
 Status: `Partial`. PR #28 validation is clean and Railway production is online with the current branch deployment. Final go-live CI/CD readiness is not complete until PR #28 is merged to `main` and the post-merge Railway deploy workflow is verified.
 

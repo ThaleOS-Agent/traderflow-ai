@@ -311,7 +311,19 @@ Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-
 - Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
 - Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
 
-Status: `Partial`. PR #28 validation is clean and Railway production is online with the current branch deployment. Final go-live CI/CD readiness is not complete until PR #28 is merged to `main` and the post-merge Railway deploy workflow is verified.
+#### Verification Evidence - 2026-06-18
+
+- `origin/main` is now at commit `4aa82ceccd43a90f498f61fa872ef6fefebe71c9`.
+- The current main-branch validation workflows passed for that commit: `CI/CD / Build and Validate`, `Docker Image CI / build`, and `Frontend Build / build`.
+- The current main-branch Railway deploy workflow run `27658934558` failed in the `Deploy Docker service to Railway` step.
+- The failed deploy log shows Railway CLI authorization failure: `Unauthorized. Please check that your RAILWAY_TOKEN is valid and has access to the resource you're trying to use.`
+- Despite the failed GitHub deploy workflow, Railway currently reports the production service online at deployment `b3568fdb-38b4-4803-87f5-502f54f5b7e7`.
+- Production `GET /api/health` returned `200` and reported `tradingEngine=running`, `patternScanner=running`, `assetScanner=running`, `agentOrchestrator=initialized`, `arbitrageDetector=running`, `mlPredictor=initialized`, `dexIntegration=initialized`, and `advancedRiskManager=initialized`.
+- Production landing page `/` returned `200 text/html; charset=UTF-8`.
+- Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
+- Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
+
+Status: `Partial`. Production Railway is online and the deployed app passes health, landing page, dashboard, and WebSocket checks. The GitHub-to-Railway deployment path is not production-ready because the checked-in `Deploy to Railway` workflow is currently failing with an unauthorized `RAILWAY_TOKEN`, so automated post-merge deploy verification is not yet reliable.
 
 ## First Live Trade Runbook
 

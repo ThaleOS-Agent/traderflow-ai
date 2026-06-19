@@ -9,6 +9,19 @@ interface SettingsPageProps {
   onBack: () => void;
 }
 
+const EXCHANGE_OPTIONS = [
+  { value: 'binance', label: 'Binance' },
+  { value: 'coinbase', label: 'Coinbase Exchange', passphraseLabel: 'API Passphrase' },
+  { value: 'kraken', label: 'Kraken' },
+  { value: 'kucoin', label: 'KuCoin', passphraseLabel: 'API Passphrase' },
+  { value: 'bybit', label: 'Bybit' },
+  { value: 'ftx', label: 'FTX' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'bitfinex', label: 'Bitfinex' },
+  { value: 'interactive_brokers', label: 'Interactive Brokers' },
+  { value: 'oanda', label: 'OANDA', passphraseLabel: 'Account ID' },
+];
+
 export function SettingsPage({ onBack }: SettingsPageProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -39,8 +52,11 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
     exchange: 'binance',
     apiKey: '',
     apiSecret: '',
+    passphrase: '',
     isTestnet: true,
   });
+
+  const selectedExchange = EXCHANGE_OPTIONS.find((option) => option.value === exchangeKey.exchange);
 
   useEffect(() => {
     loadSettings();
@@ -107,10 +123,16 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         return;
       }
 
+      if (selectedExchange?.passphraseLabel && !exchangeKey.passphrase) {
+        setError(`${selectedExchange.passphraseLabel} is required`);
+        setSaving(false);
+        return;
+      }
+
       await api.addExchangeKeys(exchangeKey);
       
       setSuccess('Exchange connected successfully');
-      setExchangeKey({ exchange: 'binance', apiKey: '', apiSecret: '', isTestnet: true });
+      setExchangeKey({ exchange: 'binance', apiKey: '', apiSecret: '', passphrase: '', isTestnet: true });
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add exchange key');
@@ -390,14 +412,12 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             <div className="space-y-3">
               <select
                 value={exchangeKey.exchange}
-                onChange={(e) => setExchangeKey(prev => ({ ...prev, exchange: e.target.value }))}
+                onChange={(e) => setExchangeKey(prev => ({ ...prev, exchange: e.target.value, passphrase: '' }))}
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs focus:outline-none focus:border-cyan-500/50"
               >
-                <option value="binance">Binance</option>
-                <option value="coinbase">Coinbase</option>
-                <option value="kraken">Kraken</option>
-                <option value="kucoin">KuCoin</option>
-                <option value="bybit">Bybit</option>
+                {EXCHANGE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
 
               <input
@@ -423,6 +443,16 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                   {showApiSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
+
+              {selectedExchange?.passphraseLabel && (
+                <input
+                  type="text"
+                  placeholder={selectedExchange.passphraseLabel}
+                  value={exchangeKey.passphrase}
+                  onChange={(e) => setExchangeKey(prev => ({ ...prev, passphrase: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-xs placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                />
+              )}
 
               <label className="flex items-center gap-2 text-xs">
                 <input

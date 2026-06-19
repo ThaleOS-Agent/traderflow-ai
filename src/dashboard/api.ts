@@ -133,7 +133,7 @@ export const api = {
     });
   },
 
-  async addExchangeKeys(payload: { exchange: string; apiKey: string; apiSecret: string; isTestnet: boolean }) {
+  async addExchangeKeys(payload: { exchange: string; apiKey: string; apiSecret: string; passphrase?: string; isTestnet: boolean }) {
     return request<{ message: string; exchange: Record<string, unknown> }>('/user/exchange-keys', {
       method: 'POST',
       body: JSON.stringify(payload),

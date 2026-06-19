@@ -3,30 +3,15 @@ import { logger } from '../utils/logger.js';
 import { authenticate } from '../middleware/auth.js';
 import { ExchangeConnector } from '../services/exchangeConnector.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
+import { getVenueSandboxFlag, resolveVenueForSymbol } from '../config/tradingVenues.js';
 
 const router = express.Router();
-
-// Detect which exchange to use from the symbol when not explicitly provided
-function resolveExchange(symbol, explicit) {
-  if (explicit) return explicit;
-  const upper = symbol.toUpperCase();
-  // OANDA-style symbols contain underscore (EUR_USD) or are known commodities
-  if (upper.includes('_') || ['XAUUSD','XAGUSD','USOIL','UKOIL','WTICO_USD','BCO_USD','XAU_USD','XAG_USD'].includes(upper)) {
-    return 'oanda';
-  }
-  return 'binance';
-}
-
-// Whether an exchange requires auth for public market data
-function isTestnet(exchange) {
-  return exchange !== 'kraken' && exchange !== 'bitfinex';
-}
 
 // Get ticker for a symbol
 router.get('/ticker/:symbol', async (req, res) => {
   try {
-    const exchange = resolveExchange(req.params.symbol, req.query.exchange);
-    const connector = new MultiExchangeConnector(exchange, isTestnet(exchange));
+    const exchange = resolveVenueForSymbol(req.params.symbol, req.query.exchange);
+    const connector = new MultiExchangeConnector(exchange, getVenueSandboxFlag(exchange));
     const ticker = await connector.getTicker(req.params.symbol.toUpperCase());
 
     res.json({ ticker, exchange });
@@ -40,8 +25,8 @@ router.get('/ticker/:symbol', async (req, res) => {
 router.get('/orderbook/:symbol', async (req, res) => {
   try {
     const { limit = 100, exchange: exQ } = req.query;
-    const exchange = resolveExchange(req.params.symbol, exQ);
-    const connector = new MultiExchangeConnector(exchange, isTestnet(exchange));
+    const exchange = resolveVenueForSymbol(req.params.symbol, exQ);
+    const connector = new MultiExchangeConnector(exchange, getVenueSandboxFlag(exchange));
     const orderBook = await connector.getOrderBook(req.params.symbol.toUpperCase(), parseInt(limit));
     
     res.json({ orderBook });
@@ -56,8 +41,8 @@ router.get('/klines/:symbol', async (req, res) => {
   try {
     const { interval = '1h', limit = 200, exchange: exQ } = req.query;
     const symbol = req.params.symbol.toUpperCase();
-    const exchange = resolveExchange(symbol, exQ);
-    const connector = new MultiExchangeConnector(exchange, isTestnet(exchange));
+    const exchange = resolveVenueForSymbol(symbol, exQ);
+    const connector = new MultiExchangeConnector(exchange, getVenueSandboxFlag(exchange));
 
     const raw = await connector.getKlines(symbol, interval, parseInt(limit));
 

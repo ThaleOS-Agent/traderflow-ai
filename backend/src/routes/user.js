@@ -4,6 +4,7 @@ import { Trade } from '../models/Trade.js';
 import { logger } from '../utils/logger.js';
 import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
+import { getSupportedVenueNames, getTradingVenue, normalizeVenueName } from '../config/tradingVenues.js';
 
 const router = express.Router();
 
@@ -158,17 +159,36 @@ router.get('/portfolio', authenticateToken, async (req, res) => {
 // Add/update exchange API keys
 router.post('/exchange-keys', authenticateToken, async (req, res) => {
   try {
-    const { exchange, apiKey, apiSecret, isTestnet } = req.body;
+    const { exchange, apiKey, apiSecret, passphrase = '', isTestnet } = req.body;
+    const venueName = normalizeVenueName(exchange);
+    const venue = getTradingVenue(venueName);
+
+    if (!venueName || !venue) {
+      return res.status(400).json({
+        error: `Unsupported exchange. Supported venues: ${getSupportedVenueNames().join(', ')}`
+      });
+    }
+
+    if (!apiKey || !apiSecret) {
+      return res.status(400).json({ error: 'API key and API secret are required' });
+    }
+
+    if (venue.requiresPassphrase && !passphrase) {
+      return res.status(400).json({
+        error: `${venue.passphraseLabel || 'Passphrase'} is required for ${venue.label}`
+      });
+    }
     
     const user = await User.findById(req.userId);
     
     // Find existing exchange config
-    const existingIndex = user.exchanges.findIndex(e => e.name === exchange);
+    const existingIndex = user.exchanges.findIndex(e => e.name === venueName);
     
     const exchangeConfig = {
-      name: exchange,
+      name: venueName,
       apiKey,
       apiSecret,
+      passphrase,
       isTestnet: isTestnet !== false,
       isActive: true
     };
@@ -186,7 +206,14 @@ router.post('/exchange-keys', authenticateToken, async (req, res) => {
     
     res.json({ 
       message: 'Exchange API keys updated',
-      exchange: { name: exchange, isTestnet: exchangeConfig.isTestnet, isActive: true }
+      exchange: {
+        name: venueName,
+        label: venue.label,
+        isTestnet: exchangeConfig.isTestnet,
+        isActive: true,
+        requiresPassphrase: venue.requiresPassphrase,
+        passphraseLabel: venue.passphraseLabel || 'Passphrase'
+      }
     });
   } catch (error) {
     logger.error('Update exchange keys error:', error);
@@ -201,9 +228,12 @@ router.get('/exchanges', authenticateToken, async (req, res) => {
     
     const exchanges = user.exchanges.map(e => ({
       name: e.name,
+      label: getTradingVenue(e.name)?.label || e.name,
       isTestnet: e.isTestnet,
       isActive: e.isActive,
-      hasKeys: !!(e.apiKey && e.apiSecret)
+      hasKeys: !!(e.apiKey && e.apiSecret),
+      requiresPassphrase: Boolean(getTradingVenue(e.name)?.requiresPassphrase),
+      passphraseConfigured: Boolean(e.passphrase)
     }));
     
     res.json({ exchanges });

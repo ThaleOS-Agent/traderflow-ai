@@ -6,6 +6,7 @@ const exchangeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   apiKey: { type: String, default: '' },
   apiSecret: { type: String, default: '' },
+  passphrase: { type: String, default: '' },
   isTestnet: { type: Boolean, default: true },
   isActive: { type: Boolean, default: false }
 });
@@ -119,6 +120,7 @@ userSchema.pre('save', async function(next) {
     for (const ex of this.exchanges) {
       if (ex.apiKey)    ex.apiKey    = encrypt(ex.apiKey);
       if (ex.apiSecret) ex.apiSecret = encrypt(ex.apiSecret);
+      if (ex.passphrase) ex.passphrase = encrypt(ex.passphrase);
     }
   }
 
@@ -138,6 +140,7 @@ userSchema.methods.getDecryptedExchanges = function() {
     ...ex.toObject(),
     apiKey:    decrypt(ex.apiKey),
     apiSecret: decrypt(ex.apiSecret),
+    passphrase: decrypt(ex.passphrase),
   }));
 };
 

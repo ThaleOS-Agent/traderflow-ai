@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { Signal } from '../models/Signal.js';
 import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { RiskManager } from './riskManager.js';
+import { getSupportedVenueNames, resolveVenueForSymbol, venueSupportsAssetType } from '../config/tradingVenues.js';
 
 /**
  * Auto-Execution Engine
@@ -26,7 +27,7 @@ export class AutoExecutionEngine {
       maxConcurrentPositions: 5,
       positionSizePercent: 10, // % of available balance per trade
       strategies: ['xq_trade_m8', 'harmonic', 'breakout', 'volume_spike'],
-      exchanges: ['binance'],
+      exchanges: getSupportedVenueNames(),
       autoClose: true, // Auto close on target/SL
       trailingStop: false
     };
@@ -49,7 +50,8 @@ export class AutoExecutionEngine {
         enabled: user.tradingSettings?.autoTrading || false,
         paperTrading: user.tradingSettings?.paperTrading !== false,
         strategies: [user.tradingSettings?.defaultStrategy || 'xq_trade_m8'],
-        riskLevel: user.tradingSettings?.riskLevel || 'medium'
+        riskLevel: user.tradingSettings?.riskLevel || 'medium',
+        maxPositionSize: user.tradingSettings?.maxPositionSize || null
       };
 
       // Setup exchange connectors (keys decrypted from DB at-rest encryption)
@@ -73,6 +75,8 @@ export class AutoExecutionEngine {
 
         exchanges.set(exchangeConfig.name, connector);
       }
+
+      config.exchanges = Array.from(exchanges.keys());
 
       // Setup risk manager
       const riskManager = new RiskManager({
@@ -161,7 +165,7 @@ export class AutoExecutionEngine {
     }
 
     // Get exchange connector
-    const exchangeName = opportunity.exchange || 'binance';
+    const exchangeName = this.resolveExchangeForOpportunity(opportunity, exchanges);
     const connector = exchanges.get(exchangeName);
     
     if (!connector) {
@@ -190,8 +194,14 @@ export class AutoExecutionEngine {
       accountBalance,
       config.positionSizePercent,
       opportunity.entryPrice,
-      opportunity.stopLoss
+      opportunity.stopLoss,
+      config.maxPositionSize
     );
+
+    if (positionSize <= 0) {
+      logger.warn(`Calculated position size is zero for user ${userId} on ${opportunity.symbol}`);
+      return;
+    }
 
     // Validate with risk manager
     const validation = riskManager.validateTrade(
@@ -318,13 +328,17 @@ export class AutoExecutionEngine {
   /**
    * Calculate position size based on risk parameters
    */
-  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss) {
+  calculatePositionSize(accountBalance, positionSizePercent, entryPrice, stopLoss, maxPositionSize = null) {
     const riskAmount = accountBalance * (positionSizePercent / 100);
     const priceRisk = Math.abs(entryPrice - stopLoss);
     
     if (priceRisk === 0) return 0;
     
-    const quantity = riskAmount / priceRisk;
+    let quantity = riskAmount / priceRisk;
+
+    if (maxPositionSize && entryPrice > 0) {
+      quantity = Math.min(quantity, maxPositionSize / entryPrice);
+    }
     
     // Round based on price magnitude
     if (entryPrice < 1) {
@@ -379,6 +393,20 @@ export class AutoExecutionEngine {
       ...newConfig
     };
 
+    if (Object.prototype.hasOwnProperty.call(newConfig, 'maxConcurrentPositions')) {
+      const maxConcurrentPositions = Number(newConfig.maxConcurrentPositions);
+      if (Number.isInteger(maxConcurrentPositions) && maxConcurrentPositions > 0) {
+        engine.riskManager.settings.maxPositions = maxConcurrentPositions;
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(newConfig, 'maxPositionSize')) {
+      const maxPositionSize = Number(newConfig.maxPositionSize);
+      engine.config.maxPositionSize = Number.isFinite(maxPositionSize) && maxPositionSize > 0
+        ? maxPositionSize
+        : null;
+    }
+
     // Update user in database
     await User.findByIdAndUpdate(userId, {
       'tradingSettings.autoTrading': engine.config.enabled,
@@ -421,6 +449,28 @@ export class AutoExecutionEngine {
    */
   async toggle(userId, enabled) {
     return this.updateConfig(userId, { enabled });
+  }
+
+  resolveExchangeForOpportunity(opportunity, exchanges) {
+    const configuredExchanges = Array.from(exchanges.keys());
+    const preferredExchange = resolveVenueForSymbol(
+      opportunity.symbol,
+      opportunity.exchange,
+      configuredExchanges[0] || 'binance'
+    );
+
+    if (exchanges.has(preferredExchange)) {
+      return preferredExchange;
+    }
+
+    if (opportunity.assetType) {
+      const assetMatched = configuredExchanges.find((exchange) =>
+        venueSupportsAssetType(exchange, opportunity.assetType)
+      );
+      if (assetMatched) return assetMatched;
+    }
+
+    return configuredExchanges[0] || preferredExchange;
   }
 
   /**

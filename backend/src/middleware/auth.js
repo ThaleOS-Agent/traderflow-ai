@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
 import { logger } from '../utils/logger.js';
+import { isFounderUser } from '../utils/founderAccess.js';
 
 /**
  * Authentication Middleware
@@ -140,9 +141,7 @@ export const generateToken = (user) => {
  */
 export const hasAdminAccess = (user) => (
   user?.role === 'admin' ||
-  user?.role === 'founder' ||
-  user?.isFounder === true ||
-  user?.subscription?.tier === 'founder'
+  isFounderUser(user)
 );
 
 export const requireAdmin = (req, res, next) => {

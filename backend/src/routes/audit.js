@@ -18,10 +18,26 @@ router.get('/database', authenticate, requireAdmin, async (req, res) => {
     const counts = {
       users: await User.countDocuments(),
       founderUsers: await User.countDocuments({
+        'subscription.tier': 'founder'
+      }),
+      founderIntegrityDrift: await User.countDocuments({
         $or: [
-          { role: 'founder' },
-          { isFounder: true },
-          { 'subscription.tier': 'founder' }
+          {
+            'subscription.tier': 'founder',
+            $or: [
+              { isFounder: { $ne: true } },
+              { role: { $ne: 'founder' } },
+              { 'subscription.status': { $ne: 'lifetime' } },
+              { 'subscription.expiresAt': { $ne: null } }
+            ]
+          },
+          {
+            'subscription.tier': { $ne: 'founder' },
+            $or: [
+              { isFounder: true },
+              { role: 'founder' }
+            ]
+          }
         ]
       }),
       walletUsers: await User.countDocuments({

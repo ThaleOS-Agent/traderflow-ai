@@ -1,5 +1,6 @@
 import { walletConnectService } from '../services/walletConnectService.js';
 import { logger } from '../utils/logger.js';
+import { founderIntegrityIssues, isFounderUser } from '../utils/founderAccess.js';
 
 /**
  * Paywall Middleware
@@ -51,7 +52,12 @@ const FEATURE_TIERS = {
 const TIER_HIERARCHY = ['free', 'bronze', 'silver', 'gold', 'platinum', 'diamond', 'founder'];
 
 function getEffectiveTier(user) {
-  if (user?.role === 'founder' || user?.isFounder === true || user?.subscription?.tier === 'founder') {
+  const integrityIssues = founderIntegrityIssues(user);
+  if (integrityIssues.length > 0) {
+    logger.warn(`Founder integrity mismatch for user ${user?._id || 'unknown'}: ${integrityIssues.join(',')}`);
+  }
+
+  if (isFounderUser(user)) {
     return 'founder';
   }
   return user?.subscription?.tier || 'free';

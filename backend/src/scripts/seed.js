@@ -1,27 +1,20 @@
 /**
- * Seed script — creates the Founder account and a demo user.
+ * Seed script — creates demo users only.
  * Run once: node backend/src/scripts/seed.js
  */
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-dotenv.config({ path: join(dirname(fileURLToPath(import.meta.url)), '../../../.env') });
+const envDir = join(dirname(fileURLToPath(import.meta.url)), '../../../');
+dotenv.config({ path: join(envDir, '.env.local') });
+dotenv.config({ path: join(envDir, '.env'), override: false });
 
 import mongoose from 'mongoose';
 import { User } from '../models/User.js';
 import { logger } from '../utils/logger.js';
 
 const ACCOUNTS = [
-  {
-    email: 'founder@tradeflow.ai',
-    password: 'TradeFlow@Founder1',
-    firstName: 'TradeFlow',
-    lastName: 'Founder',
-    role: 'founder',
-    isFounder: true,
-    subscription: { tier: 'founder', status: 'lifetime' },
-  },
   {
     email: 'demo@tradeflow.ai',
     password: 'TradeFlow@Demo1',
@@ -97,15 +90,13 @@ async function seed() {
   console.log('\n─────────────────────────────────────────');
   console.log('  TradeFlow AI — Seeded Accounts');
   console.log('─────────────────────────────────────────');
-  console.log('  FOUNDER (full access):');
-  console.log('    Email   : founder@tradeflow.ai');
-  console.log('    Password: TradeFlow@Founder1');
-  console.log('    Tier    : founder (lifetime, all features)');
-  console.log('');
   console.log('  DEMO (Gold tier):');
   console.log('    Email   : demo@tradeflow.ai');
   console.log('    Password: TradeFlow@Demo1');
   console.log('    Tier    : gold');
+  console.log('');
+  console.log('  Founder access is no longer seeded.');
+  console.log('  Provision Founder tier through wallet allowlisting and controlled account updates only.');
   console.log('─────────────────────────────────────────\n');
 
   await mongoose.disconnect();

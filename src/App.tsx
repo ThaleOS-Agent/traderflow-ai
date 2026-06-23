@@ -130,7 +130,7 @@ function App() {
   const userTier = typeof user?.subscription === 'object' && user.subscription
     ? String((user.subscription as { tier?: unknown }).tier ?? 'free')
     : 'free';
-  const isFounder = user?.isFounder === true || userTier === 'founder';
+  const isFounder = userTier === 'founder';
 
   if (!authChecked) {
     return (

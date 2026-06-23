@@ -3,6 +3,7 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Web3 } from 'web3';
+import { founderIntegrityIssues, isFounderUser, normalizeFounderState } from '../utils/founderAccess.js';
 
 const web3 = new Web3();
 
@@ -103,6 +104,27 @@ export class WalletConnectService {
       .filter(Boolean);
   }
 
+  applyFounderEntitlement(user) {
+    user.subscription = {
+      ...user.subscription,
+      tier: 'founder',
+      status: 'lifetime',
+      startedAt: user.subscription?.startedAt || new Date(),
+      expiresAt: null,
+      paymentMethod: user.subscription?.paymentMethod || 'wallet_allowlist',
+      txHash: user.subscription?.txHash || null
+    };
+
+    normalizeFounderState(user);
+  }
+
+  logFounderIntegrity(user, context) {
+    const issues = founderIntegrityIssues(user);
+    if (issues.length > 0) {
+      logger.warn(`Founder integrity mismatch during ${context} for user ${user?._id || 'unknown'}: ${issues.join(',')}`);
+    }
+  }
+
   /**
    * Create a new WalletConnect session
    */
@@ -162,14 +184,12 @@ export class WalletConnectService {
       // Check if founder
       const isFounder = this.founderWallets.includes(normalizedAddress);
       if (isFounder) {
-        user.subscription.tier = 'founder';
-        user.subscription.status = 'lifetime';
-        user.subscription.expiresAt = null;
-        user.isFounder = true;
-        user.role = 'founder';
+        this.applyFounderEntitlement(user);
         await user.save();
         logger.info(`Founder login: ${normalizedAddress}`);
       }
+
+      this.logFounderIntegrity(user, 'wallet_connect');
       
       // Update session
       session.status = 'connected';
@@ -186,7 +206,7 @@ export class WalletConnectService {
           id: user._id,
           walletAddress: normalizedAddress,
           tier: user.subscription.tier,
-          isFounder: user.isFounder || false,
+          isFounder: isFounderUser(user),
           features: this.getTierFeatures(user.subscription.tier)
         },
         token,
@@ -245,17 +265,11 @@ export class WalletConnectService {
 
       const isFounder = this.founderWallets.includes(normalizedAddress);
       if (isFounder) {
-        user.subscription = {
-          tier: 'founder',
-          status: 'lifetime',
-          startedAt: user.subscription?.startedAt || new Date(),
-          expiresAt: null
-        };
-        user.isFounder = true;
-        user.role = 'founder';
+        this.applyFounderEntitlement(user);
       }
 
       await user.save();
+      this.logFounderIntegrity(user, 'wallet_link');
 
       session.status = 'connected';
       session.walletAddress = normalizedAddress;
@@ -270,7 +284,7 @@ export class WalletConnectService {
           email: user.email,
           walletAddress: normalizedAddress,
           tier: user.subscription?.tier || 'free',
-          isFounder: user.isFounder || false,
+          isFounder: isFounderUser(user),
           features: this.getTierFeatures(user.subscription?.tier || 'free')
         },
         session
@@ -304,7 +318,7 @@ export class WalletConnectService {
         userId: user._id.toString(),
         walletAddress: user.walletAddress,
         tier: user.subscription?.tier || 'free',
-        isFounder: user.isFounder || false
+        isFounder: isFounderUser(user)
       },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
@@ -370,17 +384,8 @@ export class WalletConnectService {
         throw new Error('User not found');
       }
 
-      if (user.role === 'founder' || user.isFounder === true || user.subscription?.tier === 'founder') {
-        user.subscription = {
-          tier: 'founder',
-          status: 'lifetime',
-          startedAt: user.subscription?.startedAt || new Date(),
-          expiresAt: null,
-          paymentMethod: user.subscription?.paymentMethod || 'founder',
-          txHash: user.subscription?.txHash || null
-        };
-        user.isFounder = true;
-        user.role = 'founder';
+      if (isFounderUser(user)) {
+        this.applyFounderEntitlement(user);
         await user.save();
 
         return {

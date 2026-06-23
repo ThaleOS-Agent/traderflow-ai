@@ -14,7 +14,8 @@
     "dev:backend": "cd backend && npm run dev",
     "deploy": "bash deploy.sh",
     "deploy:railway": "bash deploy.sh --railway",
-    "seed": "node backend/src/scripts/seed.js"
+    "seed": "node backend/src/scripts/seed.js",
+    "rotate:founder-seed": "node backend/src/scripts/rotateFounderSeedAccount.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

@@ -2,11 +2,12 @@ import express from 'express';
 import { walletConnectService } from '../services/walletConnectService.js';
 import { authenticate } from '../middleware/auth.js';
 import { requireFeature, requireTier, requireFounder } from '../middleware/paywall.js';
+import { isFounderUser } from '../utils/founderAccess.js';
 
 const router = express.Router();
 
 function getEffectiveTier(user) {
-  if (user?.role === 'founder' || user?.isFounder === true || user?.subscription?.tier === 'founder') {
+  if (isFounderUser(user)) {
     return 'founder';
   }
   return user?.subscription?.tier || 'free';
@@ -267,8 +268,8 @@ router.get('/features', authenticate, async (req, res) => {
 
 /**
  * @route POST /api/wallet/founder/login
- * @desc Founder full access login
- * @access Private (requires founder wallet)
+ * @desc Confirm Founder full-access entitlement
+ * @access Private (requires founder tier)
  */
 router.post('/founder/login', authenticate, requireFounder, async (req, res) => {
   try {

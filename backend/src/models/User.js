@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { encrypt, decrypt } from '../utils/encryption.js';
+import { normalizeFounderState } from '../utils/founderAccess.js';
 
 const exchangeSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -128,6 +129,11 @@ const userSchema = new mongoose.Schema({
   lastLogin: { type: Date },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
+});
+
+userSchema.pre('validate', function(next) {
+  normalizeFounderState(this);
+  next();
 });
 
 // Hash password before saving

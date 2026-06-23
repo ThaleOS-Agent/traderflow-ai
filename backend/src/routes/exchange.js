@@ -51,6 +51,90 @@ const VENUE_DETAILS = {
   oanda: { label: 'OANDA', type: 'broker', credentialHint: 'Token + account ID' }
 };
 
+const VENUE_CAPABILITIES = {
+  binance: {
+    live: true,
+    paper: true,
+    assetClasses: ['crypto spot', 'crypto futures'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Uses Binance testnet URLs when isTestnet=true. Live path uses api.binance.com/fapi.binance.com.'
+  },
+  coinbase: {
+    live: true,
+    paper: true,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret', 'passphrase'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Sandbox uses api-public.sandbox.exchange.coinbase.com. Connector is written against Exchange-style REST routes.'
+  },
+  kraken: {
+    live: true,
+    paper: false,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'No separate testnet path is configured in this codebase.'
+  },
+  kucoin: {
+    live: true,
+    paper: true,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret', 'passphrase'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Sandbox uses openapi-sandbox.kucoin.com.'
+  },
+  bybit: {
+    live: true,
+    paper: true,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Uses Bybit v5 REST endpoints and api-testnet.bybit.com for paper mode.'
+  },
+  gemini: {
+    live: true,
+    paper: true,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Sandbox uses api.sandbox.gemini.com.'
+  },
+  bitfinex: {
+    live: true,
+    paper: false,
+    assetClasses: ['crypto spot'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'apiSecret'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'No paper/testnet URL is configured in this codebase.'
+  },
+  interactive_brokers: {
+    live: true,
+    paper: true,
+    assetClasses: ['equities', 'options', 'futures', 'forex'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Paper mode points at localhost:5000/v1/api, implying a local IB Gateway/TWS bridge rather than a hosted sandbox.'
+  },
+  oanda: {
+    live: true,
+    paper: true,
+    assetClasses: ['forex', 'metals', 'CFDs'],
+    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'accountId'],
+    supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
+    notes: 'Uses API token as apiKey and OANDA account ID in passphrase/account field. Practice uses api-fxpractice.oanda.com.'
+  }
+};
+
 function getActiveExchange(user, requestedExchange) {
   const exchanges = user.getDecryptedExchanges?.() || [];
   if (requestedExchange) {
@@ -152,6 +236,30 @@ router.get('/balance', authenticate, async (req, res) => {
   }
 });
 
+// Public capability map for supported exchanges/brokers
+router.get('/capabilities', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      venues: SUPPORTED_TRADING_VENUES.map(name => ({
+        name,
+        ...VENUE_DETAILS[name],
+        capabilities: VENUE_CAPABILITIES[name] || null
+      })),
+      platformWebSocket: {
+        path: '/ws',
+        authEvent: 'auth',
+        subscribeEvent: 'subscribe',
+        channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData'],
+        notes: 'This codebase broadcasts platform events over /ws. Native exchange streaming sockets are not implemented in the venue connectors.'
+      }
+    });
+  } catch (error) {
+    logger.error('Exchange capability lookup error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load exchange capabilities' });
+  }
+});
+
 // List saved exchange connections
 router.get('/connections', authenticate, async (req, res) => {
   try {
@@ -171,6 +279,29 @@ router.get('/connections', authenticate, async (req, res) => {
   } catch (error) {
     logger.error('List exchange connections error:', error);
     res.status(500).json({ success: false, error: 'Failed to list exchange connections' });
+  }
+});
+
+// Read a single saved exchange connection without exposing secrets
+router.get('/connections/:id', authenticate, async (req, res) => {
+  try {
+    const exchange = req.user.exchanges.id(req.params.id);
+    if (!exchange) {
+      return res.status(404).json({ success: false, error: 'Exchange connection not found' });
+    }
+
+    res.json({
+      success: true,
+      connection: sanitizeExchange(exchange),
+      venue: {
+        name: exchange.name,
+        ...VENUE_DETAILS[exchange.name],
+        capabilities: VENUE_CAPABILITIES[exchange.name] || null
+      }
+    });
+  } catch (error) {
+    logger.error('Read exchange connection error:', error);
+    res.status(500).json({ success: false, error: 'Failed to read exchange connection' });
   }
 });
 

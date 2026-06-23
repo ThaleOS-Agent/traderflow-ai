@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { TrendingUp, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { api } from './api';
 
 interface LoginPageProps {
@@ -13,7 +13,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -30,6 +29,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     e.preventDefault();
     setError('');
     setLoading(true);
+
     try {
       if (mode === 'login') {
         const data = await api.login(form.email, form.password);
@@ -53,82 +53,98 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#050508] flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-10">
-          <div className="w-10 h-10 rounded-full bg-cyan-400/20 flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-cyan-400" />
-          </div>
-          <span className="text-2xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            TRADEFLOW AI
-          </span>
+    <section className="mx-auto grid min-h-[calc(100vh-88px)] max-w-[1440px] gap-10 px-6 py-12 lg:grid-cols-[0.9fr_1.1fr] lg:px-10 lg:py-16">
+      <div className="flex flex-col justify-between rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,23,35,0.94),rgba(7,12,19,0.98))] p-8">
+        <div>
+          <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Operator access</p>
+          <h1 className="mt-5 text-4xl font-semibold tracking-[-0.05em] text-white md:text-5xl">
+            Trade with a clear operating surface, not a noisy terminal.
+          </h1>
+          <p className="mt-6 max-w-xl text-lg leading-8 text-slate-400">
+            Sign in to review market research, risk posture, venue connectivity, and automated execution in one place.
+          </p>
         </div>
 
-        {/* Card */}
-        <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8">
-          {/* Tab switcher */}
-          <div className="flex gap-1 p-1 bg-white/5 rounded-xl mb-8">
-            {(['login', 'register'] as Mode[]).map(m => (
+        <div className="mt-10 space-y-4">
+          {[
+            'Paper trading is enabled by default for safer onboarding.',
+            'Exchange and broker credentials are stored encrypted at rest.',
+            'Live order routing remains behind explicit risk and connection checks.',
+          ].map(item => (
+            <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-black/20 px-4 py-4 text-sm text-slate-300">
+              <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center">
+        <div className="w-full rounded-[32px] border border-white/10 bg-white/[0.03] p-8 shadow-[0_28px_70px_rgba(0,0,0,0.34)]">
+          <div className="mb-8 flex gap-2 rounded-2xl border border-white/10 bg-black/20 p-2">
+            {(['login', 'register'] as Mode[]).map(currentMode => (
               <button
-                key={m}
-                onClick={() => { setMode(m); setError(''); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${
-                  mode === m
-                    ? 'bg-cyan-500 text-black'
-                    : 'text-gray-400 hover:text-white'
+                key={currentMode}
+                onClick={() => { setMode(currentMode); setError(''); }}
+                className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition-colors ${
+                  mode === currentMode
+                    ? 'bg-cyan-400 text-slate-950'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {m === 'login' ? 'Sign In' : 'Register'}
+                {currentMode === 'login' ? 'Sign in' : 'Create account'}
               </button>
             ))}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'register' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">First Name</label>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">First name</span>
                   <input
                     type="text"
                     value={form.firstName}
                     onChange={set('firstName')}
                     required
                     maxLength={50}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                    autoComplete="given-name"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
                     placeholder="John"
                   />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Last Name</label>
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">Last name</span>
                   <input
                     type="text"
                     value={form.lastName}
                     onChange={set('lastName')}
                     required
                     maxLength={50}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                    autoComplete="family-name"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
                     placeholder="Doe"
                   />
-                </div>
+                </label>
               </div>
             )}
 
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5">Email</label>
+            <label className="block">
+              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">Email</span>
               <input
                 type="email"
                 value={form.email}
                 onChange={set('email')}
                 required
                 maxLength={254}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
+                autoComplete="email"
+                className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
                 placeholder="you@example.com"
               />
-            </div>
+            </label>
 
-            <div>
-              <label className="block text-xs text-gray-400 mb-1.5">Password</label>
+            <label className="block">
+              <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">Password</span>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
@@ -137,50 +153,75 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   required
                   minLength={8}
                   maxLength={128}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 pr-10 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-cyan-500/50"
-                  placeholder={mode === 'register' ? 'Min. 8 characters' : '••••••••'}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 pr-12 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
+                  placeholder={mode === 'register' ? 'Minimum 8 characters' : 'Enter your password'}
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(p => !p)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  onClick={() => setShowPassword(value => !value)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-            </div>
+            </label>
+
+            {mode === 'register' && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">Phone</span>
+                  <input
+                    type="tel"
+                    value={form.phone}
+                    onChange={set('phone')}
+                    autoComplete="tel"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
+                    placeholder="+64 21 555 555"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-2 block text-xs uppercase tracking-[0.18em] text-slate-500">Country</span>
+                  <input
+                    type="text"
+                    value={form.country}
+                    onChange={set('country')}
+                    autoComplete="country-name"
+                    className="w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-white outline-none transition-colors placeholder:text-slate-600 focus:border-cyan-400/50"
+                    placeholder="New Zealand"
+                  />
+                </label>
+              </div>
+            )}
 
             {error && (
-              <p className="text-red-400 text-sm bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+              <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
                 {error}
-              </p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-cyan-500 hover:bg-cyan-400 disabled:bg-cyan-500/50 text-black font-semibold rounded-lg transition-colors flex items-center justify-center gap-2"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-400 px-6 py-4 text-base font-semibold text-slate-950 transition-colors hover:bg-cyan-300 disabled:opacity-60"
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'login' ? 'Sign In' : 'Create Account'}
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {mode === 'login' ? 'Open dashboard' : 'Create account'}
+              {!loading && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
 
-          <p className="text-center text-xs text-gray-500 mt-6">
-            {mode === 'login' ? "Don't have an account? " : 'Already have an account? '}
+          <p className="mt-6 text-center text-sm text-slate-500">
+            {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
             <button
               onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setError(''); }}
-              className="text-cyan-400 hover:text-cyan-300"
+              className="font-medium text-cyan-300 hover:text-cyan-200"
             >
-              {mode === 'login' ? 'Register' : 'Sign In'}
+              {mode === 'login' ? 'Create one' : 'Sign in'}
             </button>
           </p>
         </div>
-
-        <p className="text-center text-xs text-gray-600 mt-6">
-          Paper trading enabled by default. No real funds at risk.
-        </p>
       </div>
-    </div>
+    </section>
   );
 }

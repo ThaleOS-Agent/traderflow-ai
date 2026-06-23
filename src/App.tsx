@@ -1,39 +1,90 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState } from 'react';
+import { ArrowRight, Menu, User2 } from 'lucide-react';
 import './index.css';
 import useLenis from './hooks/useLenis';
 import { siteConfig } from './config';
-import Hero from './sections/Hero';
-import ParallaxGallery from './sections/ParallaxGallery';
-import TourSchedule from './sections/TourSchedule';
-import Footer from './sections/Footer';
 import { Dashboard } from './dashboard';
 import { LoginPage } from './dashboard/LoginPage';
 import { SubscriptionPage } from './dashboard/SubscriptionPage';
 import { api } from './dashboard/api';
+import { MarketingLanding } from './sections/MarketingLanding';
 
-// Lazy-load the Three.js cube — keeps it out of the initial JS chunk (~400 kB saving)
-const StrategyCube = lazy(() => import('./sections/StrategyCube'));
+type View = 'landing' | 'login' | 'dashboard' | 'plans';
+
+function ShellNav({
+  brandAction,
+  primaryAction,
+  secondaryAction,
+  tertiaryAction,
+  userLabel,
+}: {
+  brandAction: () => void;
+  primaryAction?: { label: string; onClick: () => void };
+  secondaryAction?: { label: string; onClick: () => void };
+  tertiaryAction?: { label: string; onClick: () => void };
+  userLabel?: string;
+}) {
+  return (
+    <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#07111b]/88 backdrop-blur-xl">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between px-6 py-4 lg:px-10">
+        <button onClick={brandAction} className="flex items-center gap-3 text-left">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10">
+            <Menu className="h-4 w-4 text-cyan-300" />
+          </div>
+          <div>
+            <p className="text-sm uppercase tracking-[0.22em] text-slate-500">TradeFlow AI</p>
+            <p className="text-base font-semibold text-white">Automated Trading Platform</p>
+          </div>
+        </button>
+
+        <div className="flex items-center gap-3">
+          {userLabel && (
+            <div className="hidden items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-slate-300 md:flex">
+              <User2 className="h-4 w-4 text-slate-500" />
+              {userLabel}
+            </div>
+          )}
+          {secondaryAction && (
+            <button
+              onClick={secondaryAction.onClick}
+              className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/[0.06]"
+            >
+              {secondaryAction.label}
+            </button>
+          )}
+          {tertiaryAction && (
+            <button
+              onClick={tertiaryAction.onClick}
+              className="rounded-2xl px-4 py-2.5 text-sm font-medium text-rose-200 transition-colors hover:text-white"
+            >
+              {tertiaryAction.label}
+            </button>
+          )}
+          {primaryAction && (
+            <button
+              onClick={primaryAction.onClick}
+              className="inline-flex items-center gap-2 rounded-2xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition-colors hover:bg-cyan-300"
+            >
+              {primaryAction.label}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+    </nav>
+  );
+}
 
 function App() {
-  const [currentView, setCurrentView] = useState<'landing' | 'login' | 'dashboard' | 'plans'>('landing');
+  const [currentView, setCurrentView] = useState<View>('landing');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
 
-  // Initialize Lenis smooth scrolling
   useLenis();
 
   useEffect(() => {
-    // Set page title from config
-    if (siteConfig.title) {
-      document.title = siteConfig.title;
-    }
-
-    // Add viewport meta for better mobile experience
-    const metaViewport = document.querySelector('meta[name="viewport"]');
-    if (metaViewport) {
-      metaViewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no');
-    }
+    if (siteConfig.title) document.title = siteConfig.title;
 
     let active = true;
 
@@ -75,26 +126,6 @@ function App() {
     setCurrentView('landing');
   };
 
-  const navigateToDashboard = () => {
-    if (isAuthenticated) {
-      setCurrentView('dashboard');
-    } else {
-      setCurrentView('login');
-    }
-  };
-
-  const navigateToLanding = () => {
-    setCurrentView('landing');
-  };
-
-  const navigateToPlans = () => {
-    setCurrentView('plans');
-  };
-
-  const navigateToLogin = () => {
-    setCurrentView('login');
-  };
-
   const userEmail = typeof user?.email === 'string' ? user.email : '';
   const userTier = typeof user?.subscription === 'object' && user.subscription
     ? String((user.subscription as { tier?: unknown }).tier ?? 'free')
@@ -103,180 +134,82 @@ function App() {
 
   if (!authChecked) {
     return (
-      <main className="min-h-screen bg-[#050508] flex items-center justify-center text-white">
+      <main className="min-h-screen flex items-center justify-center bg-[#07111b]">
         <div className="text-center">
-          <div className="w-10 h-10 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-sm text-gray-400">Checking session…</p>
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full border-2 border-cyan-300/40 border-t-cyan-300 animate-spin" />
+          <p className="text-sm text-slate-400">Checking session…</p>
         </div>
       </main>
     );
   }
 
-  // Render based on current view
   if (currentView === 'dashboard' && isAuthenticated) {
     return (
-      <main className="relative w-full min-h-screen bg-[#050508]">
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-md border-b border-gray-800">
-          <div className="flex items-center justify-between px-6 py-4">
-            <button 
-              onClick={navigateToLanding}
-              className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent"
-            >
-              TRADEFLOW AI
-            </button>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={navigateToPlans}
-                className="text-sm text-gray-400 hover:text-white"
-              >
-                Plans
-              </button>
-              <span className="text-sm text-gray-400">
-                {userEmail ? `${userEmail} · ${userTier}` : 'Dashboard'}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-red-400 hover:text-red-300"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </nav>
-        <div className="pt-16">
-          <Dashboard />
-        </div>
+      <main className="min-h-screen bg-[#07111b]">
+        <ShellNav
+          brandAction={() => setCurrentView('landing')}
+          secondaryAction={{ label: 'Plans', onClick: () => setCurrentView('plans') }}
+          tertiaryAction={{ label: 'Logout', onClick: handleLogout }}
+          userLabel={userEmail ? `${userEmail} · ${userTier}` : 'Dashboard'}
+        />
+        <Dashboard />
       </main>
     );
   }
 
   if (currentView === 'login') {
     return (
-      <main className="relative w-full min-h-screen bg-[#050508]">
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-md border-b border-gray-800">
-          <div className="flex items-center justify-between px-6 py-4">
-            <button 
-              onClick={navigateToLanding}
-              className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent"
-            >
-              TRADEFLOW AI
-            </button>
-          </div>
-        </nav>
-        <div className="pt-16">
-          <LoginPage onLogin={handleLogin} />
-        </div>
+      <main className="min-h-screen bg-[#07111b]">
+        <ShellNav
+          brandAction={() => setCurrentView('landing')}
+          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Plans', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'plans') }}
+        />
+        <LoginPage onLogin={handleLogin} />
       </main>
     );
   }
 
   if (currentView === 'plans') {
     return (
-      <main className="relative w-full min-h-screen bg-[#050508]">
-        <nav className="fixed top-0 left-0 right-0 z-50 bg-[#050508]/90 backdrop-blur-md border-b border-gray-800">
-          <div className="flex items-center justify-between px-6 py-4">
-            <button
-              onClick={navigateToLanding}
-              className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent"
-            >
-              TRADEFLOW AI
-            </button>
-            <div className="flex items-center gap-4">
-              <button onClick={navigateToLogin} className="text-sm text-gray-400 hover:text-white">
-                Sign in
-              </button>
-              <button
-                onClick={navigateToDashboard}
-                className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-black font-semibold rounded-lg transition-colors"
-              >
-                Dashboard
-              </button>
-            </div>
-          </div>
-        </nav>
-        <div className="pt-16">
-          <SubscriptionPage
-            currentTier={isAuthenticated ? userTier : 'free'}
-            isFounder={isAuthenticated && isFounder}
-            onUpgrade={(tier) => {
-              if (!isAuthenticated) {
-                setCurrentView('login');
-                return;
-              }
-              window.location.href = tier === 'founder'
-                ? 'mailto:founder@tradeflow.ai?subject=Founder Access Request'
-                : `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
-            }}
-          />
-        </div>
+      <main className="min-h-screen bg-[#07111b]">
+        <ShellNav
+          brandAction={() => setCurrentView('landing')}
+          secondaryAction={{ label: 'Sign in', onClick: () => setCurrentView('login') }}
+          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Get started', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'login') }}
+          userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
+        />
+        <SubscriptionPage
+          currentTier={isAuthenticated ? userTier : 'free'}
+          isFounder={isAuthenticated && isFounder}
+          onUpgrade={(tier) => {
+            if (!isAuthenticated) {
+              setCurrentView('login');
+              return;
+            }
+            window.location.href = tier === 'founder'
+              ? 'mailto:founder@tradeflow.ai?subject=Founder Access Request'
+              : `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
+          }}
+        />
       </main>
     );
   }
 
-  // Landing page
   return (
-    <main className="relative w-full min-h-screen bg-void-black overflow-x-hidden">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-void-black/80 backdrop-blur-md border-b border-gray-800/50">
-        <div className="flex items-center justify-between px-6 py-4">
-          <span className="text-xl font-bold bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">
-            TRADEFLOW AI
-          </span>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={navigateToPlans}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 font-semibold rounded-lg transition-colors"
-            >
-              Plans
-            </button>
-            {!isAuthenticated && (
-              <button
-                onClick={navigateToLogin}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-gray-200 border border-white/10 font-semibold rounded-lg transition-colors"
-              >
-                Sign in
-              </button>
-            )}
-            <button
-              onClick={navigateToDashboard}
-              className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-black font-semibold rounded-lg transition-colors"
-            >
-              {isAuthenticated ? 'Dashboard' : 'Start'}
-            </button>
-            {isAuthenticated && (
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 text-red-300 hover:text-red-200 font-semibold transition-colors"
-              >
-                Logout
-              </button>
-            )}
-          </div>
-        </div>
-      </nav>
+    <main className="min-h-screen bg-[#07111b]">
+      <ShellNav
+        brandAction={() => setCurrentView('landing')}
+        secondaryAction={{ label: 'Plans', onClick: () => setCurrentView('plans') }}
+        primaryAction={{ label: isAuthenticated ? 'Open dashboard' : 'Sign in', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'login') }}
+        tertiaryAction={isAuthenticated ? { label: 'Logout', onClick: handleLogout } : undefined}
+        userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
+      />
 
-      {/* Hero Section - Immersive landing */}
-      <div className="pt-16">
-        <Hero />
-      </div>
-
-      {/* Strategy Cube Section - 3D showcase (lazy-loaded) */}
-      <Suspense fallback={
-        <div className="relative bg-[#050508] py-24 flex items-center justify-center h-[600px]">
-          <div className="w-10 h-10 border-2 border-cyan-400/40 border-t-cyan-400 rounded-full animate-spin" />
-        </div>
-      }>
-        <StrategyCube />
-      </Suspense>
-
-      {/* Parallax Gallery Section */}
-      <ParallaxGallery />
-
-      {/* Tour Schedule Section */}
-      <TourSchedule />
-
-      {/* Footer Section */}
-      <Footer />
+      <MarketingLanding
+        onPrimaryAction={() => setCurrentView(isAuthenticated ? 'dashboard' : 'login')}
+        onSecondaryAction={() => setCurrentView(isAuthenticated ? 'dashboard' : 'plans')}
+        onPricingAction={() => setCurrentView('plans')}
+      />
     </main>
   );
 }

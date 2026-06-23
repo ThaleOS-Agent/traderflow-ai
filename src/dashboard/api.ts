@@ -403,6 +403,48 @@ export const api = {
     }>('/exchange/connections');
   },
 
+  async getExchangeCapabilities() {
+    return request<{
+      success: boolean;
+      venues: Array<{
+        name: string;
+        label?: string;
+        type?: string;
+        credentialHint?: string;
+        capabilities?: {
+          live: boolean;
+          paper: boolean;
+          assetClasses: string[];
+          transport: {
+            marketData: string;
+            account: string;
+            orders: string;
+            platformWebSocket: boolean;
+            nativeExchangeWebSocket: boolean;
+          };
+          credentials: string[];
+          supports: string[];
+          notes: string;
+        } | null;
+      }>;
+      platformWebSocket: {
+        path: string;
+        authEvent: string;
+        subscribeEvent: string;
+        channels: string[];
+        notes: string;
+      };
+    }>('/exchange/capabilities');
+  },
+
+  async getExchangeConnection(id: string) {
+    return request<{
+      success: boolean;
+      connection: Record<string, unknown>;
+      venue: Record<string, unknown>;
+    }>(`/exchange/connections/${id}`);
+  },
+
   async saveExchangeConnection(payload: Record<string, unknown>) {
     return request<{ success: boolean; connection: Record<string, unknown> }>('/exchange/connections', {
       method: 'POST',

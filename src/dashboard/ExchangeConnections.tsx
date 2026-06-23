@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link2, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { Link2, Plus, Trash2, AlertCircle, Waves, ShieldCheck, Eye } from 'lucide-react';
 import { api } from './api';
 
 interface ExchangeConnection {
@@ -17,6 +17,26 @@ interface SupportedVenue {
   label?: string;
   type?: string;
   credentialHint?: string;
+  configured?: boolean;
+  connection?: ExchangeConnection | null;
+  capabilities?: {
+    live: boolean;
+    paper: boolean;
+    assetClasses: string[];
+    transport: {
+      marketData: string;
+      account: string;
+      orders: string;
+      platformWebSocket: boolean;
+      nativeExchangeWebSocket: boolean;
+    };
+    credentials: string[];
+    supports: string[];
+    notes: string;
+  } | null;
+}
+
+interface VenueCapabilityFallback extends SupportedVenue {
   configured?: boolean;
   connection?: ExchangeConnection | null;
 }
@@ -53,6 +73,14 @@ function venueMeta(name: string) {
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
   const [supportedVenues, setSupportedVenues] = useState<SupportedVenue[]>([]);
+  const [platformSocket, setPlatformSocket] = useState<{
+    path: string;
+    authEvent: string;
+    subscribeEvent: string;
+    channels: string[];
+    notes: string;
+  } | null>(null);
+  const [selectedVenue, setSelectedVenue] = useState<SupportedVenue | null>(null);
   const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,12 +90,17 @@ export function ExchangeConnections() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api.getExchangeConnections();
+      const [res, caps] = await Promise.all([
+        api.getExchangeConnections(),
+        api.getExchangeCapabilities(),
+      ]);
       setConnections(res.connections as unknown as ExchangeConnection[]);
-      setSupportedVenues((res.supported ?? []) as unknown as SupportedVenue[]);
+      setSupportedVenues((caps.venues?.length ? caps.venues : res.supported ?? []) as unknown as SupportedVenue[]);
+      setPlatformSocket(caps.platformWebSocket ?? null);
     } catch {
       setConnections([]);
       setSupportedVenues([]);
+      setPlatformSocket(null);
     }
   }, []);
 
@@ -131,7 +164,7 @@ export function ExchangeConnections() {
     setShowForm(true);
   };
 
-  const venues = supportedVenues.length
+  const venues: VenueCapabilityFallback[] = supportedVenues.length
     ? supportedVenues
     : SUPPORTED_VENUES.map(venue => ({
       name: venue.value,
@@ -150,9 +183,27 @@ export function ExchangeConnections() {
         </div>
         <div>
           <p className="text-white text-sm font-semibold">Exchange / Broker</p>
-          <p className="text-gray-500 text-xs">Save keys for live execution</p>
+          <p className="text-gray-500 text-xs">Live and paper venue coverage, credentials, and platform websocket transport</p>
         </div>
       </div>
+
+      {platformSocket && (
+        <div className="mb-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-lg bg-cyan-500/15 p-2">
+              <Waves className="h-4 w-4 text-cyan-300" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-cyan-100">Platform WebSocket</p>
+              <p className="mt-1 text-xs text-cyan-100/80">
+                `{platformSocket.path}` with `{platformSocket.authEvent}` then `{platformSocket.subscribeEvent}`. Channels:
+                {' '}{platformSocket.channels.join(', ')}.
+              </p>
+              <p className="mt-2 text-xs text-cyan-200/70">{platformSocket.notes}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="flex items-center gap-1.5 text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2 mb-3">
@@ -187,8 +238,32 @@ export function ExchangeConnections() {
                   {connection ? (connection.isTestnet ? 'Testnet / practice' : 'Live') : hint}
                   {connection && ` · ${connection.hasApiKey ? 'API key saved' : 'No key'}`}
                 </p>
+                {venue.capabilities && (
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                    <span className={`rounded-full px-2 py-0.5 ${venue.capabilities.paper ? 'bg-yellow-500/15 text-yellow-200' : 'bg-white/5 text-gray-500'}`}>
+                      {venue.capabilities.paper ? 'Paper' : 'No paper'}
+                    </span>
+                    <span className={`rounded-full px-2 py-0.5 ${venue.capabilities.live ? 'bg-green-500/15 text-green-200' : 'bg-white/5 text-gray-500'}`}>
+                      {venue.capabilities.live ? 'Live' : 'No live'}
+                    </span>
+                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-gray-400">
+                      {venue.capabilities.transport.marketData} market data
+                    </span>
+                    <span className="rounded-full bg-white/5 px-2 py-0.5 text-gray-400">
+                      {venue.capabilities.transport.nativeExchangeWebSocket ? 'Native WS' : 'No native WS'}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSelectedVenue(venue)}
+                  className="text-xs text-gray-300 hover:text-white"
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <Eye className="w-3.5 h-3.5" /> Details
+                  </span>
+                </button>
                 {!connection && (
                   <button onClick={() => openVenueForm(venue.name)} className="text-xs text-cyan-300 hover:text-cyan-200">
                     Configure
@@ -282,6 +357,61 @@ export function ExchangeConnections() {
           >
             {saving ? 'Saving…' : 'Save connection'}
           </button>
+        </div>
+      )}
+
+      {selectedVenue && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">{selectedVenue.label ?? venueMeta(selectedVenue.name).label}</p>
+              <p className="mt-1 text-xs text-gray-500">
+                {(selectedVenue.type ?? venueMeta(selectedVenue.name).type).replace(/\b\w/g, c => c.toUpperCase())}
+                {' · '}
+                {selectedVenue.credentialHint ?? venueMeta(selectedVenue.name).hint}
+              </p>
+            </div>
+            <button onClick={() => setSelectedVenue(null)} className="text-xs text-gray-500 hover:text-white">
+              Close
+            </button>
+          </div>
+
+          {selectedVenue.capabilities ? (
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <p className="text-xs uppercase tracking-wider text-gray-500">Support</p>
+                <div className="mt-3 space-y-2 text-xs text-gray-300">
+                  <p className="flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5 text-green-300" /> Live trading: {selectedVenue.capabilities.live ? 'supported' : 'not supported'}</p>
+                  <p className="flex items-center gap-2"><ShieldCheck className="w-3.5 h-3.5 text-yellow-300" /> Paper mode: {selectedVenue.capabilities.paper ? 'supported' : 'not supported'}</p>
+                  <p>Asset classes: {selectedVenue.capabilities.assetClasses.join(', ')}</p>
+                  <p>Credentials: {selectedVenue.capabilities.credentials.join(', ')}</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <p className="text-xs uppercase tracking-wider text-gray-500">Transport</p>
+                <div className="mt-3 space-y-2 text-xs text-gray-300">
+                  <p>Market data: {selectedVenue.capabilities.transport.marketData}</p>
+                  <p>Account: {selectedVenue.capabilities.transport.account}</p>
+                  <p>Orders: {selectedVenue.capabilities.transport.orders}</p>
+                  <p>Platform WebSocket: {selectedVenue.capabilities.transport.platformWebSocket ? 'yes' : 'no'}</p>
+                  <p>Native exchange WebSocket: {selectedVenue.capabilities.transport.nativeExchangeWebSocket ? 'yes' : 'no'}</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3 lg:col-span-2">
+                <p className="text-xs uppercase tracking-wider text-gray-500">Connector coverage</p>
+                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                  {selectedVenue.capabilities.supports.map(item => (
+                    <span key={item} className="rounded-full border border-white/10 bg-black/20 px-2 py-1 text-gray-300">
+                      {item}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-4 text-xs text-gray-400">{selectedVenue.capabilities.notes}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-xs text-gray-500">No connector capability metadata available.</p>
+          )}
         </div>
       )}
     </div>

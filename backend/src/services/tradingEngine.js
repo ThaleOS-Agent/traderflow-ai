@@ -229,6 +229,64 @@ export class TradingEngine {
     }
   }
 
+  ingestNativeMarketData(update) {
+    const symbol = update?.symbol?.toUpperCase?.();
+    if (!symbol) return null;
+
+    const existing = this.marketData.get(symbol) || {
+      symbol,
+      assetType: 'crypto',
+      prices: [],
+      highs: [],
+      lows: [],
+      volumes: []
+    };
+
+    const currentPrice = Number(update.price ?? existing.currentPrice ?? 0) || existing.currentPrice || 0;
+    const volumePoint = Number(update.size ?? update.volume24h ?? 0);
+
+    const next = {
+      ...existing,
+      symbol,
+      exchange: update.venue,
+      currentPrice,
+      bid: Number(update.bid ?? existing.bid ?? 0) || existing.bid,
+      ask: Number(update.ask ?? existing.ask ?? 0) || existing.ask,
+      volume24h: Number(update.volume24h ?? existing.volume24h ?? 0) || existing.volume24h,
+      change24hPercent: Number(update.change24hPercent ?? existing.change24hPercent ?? 0) || existing.change24hPercent,
+      lastTrade: update.type === 'trade' ? {
+        price: Number(update.price ?? 0) || null,
+        size: Number(update.size ?? 0) || null,
+        side: update.side || null,
+        timestamp: update.timestamp || Date.now()
+      } : existing.lastTrade,
+      lastUpdated: update.timestamp || Date.now(),
+      source: update.source || 'native_exchange_ws'
+    };
+
+    if (currentPrice > 0) {
+      next.prices = Array.isArray(existing.prices) ? existing.prices.slice(-199) : [];
+      next.highs = Array.isArray(existing.highs) ? existing.highs.slice(-199) : [];
+      next.lows = Array.isArray(existing.lows) ? existing.lows.slice(-199) : [];
+      next.volumes = Array.isArray(existing.volumes) ? existing.volumes.slice(-199) : [];
+
+      if (next.prices.length === 0 || next.lastUpdated - (existing.lastUpdated || 0) >= 60000) {
+        next.prices.push(currentPrice);
+        next.highs.push(currentPrice);
+        next.lows.push(currentPrice);
+        next.volumes.push(volumePoint || 0);
+      } else {
+        next.prices[next.prices.length - 1] = currentPrice;
+        next.highs[next.highs.length - 1] = Math.max(next.highs[next.highs.length - 1] || currentPrice, currentPrice);
+        next.lows[next.lows.length - 1] = Math.min(next.lows[next.lows.length - 1] || currentPrice, currentPrice);
+        next.volumes[next.volumes.length - 1] = volumePoint || next.volumes[next.volumes.length - 1] || 0;
+      }
+    }
+
+    this.marketData.set(symbol, next);
+    return next;
+  }
+
   // Validate signal
   validateSignal(signal) {
     return signal && 

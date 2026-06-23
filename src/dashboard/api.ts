@@ -21,6 +21,41 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  async getHealth() {
+    return request<{
+      status: string;
+      timestamp: string;
+      tradingEngine: string;
+      patternScanner: string;
+      assetScanner: string;
+      autoExecution: string;
+      agentOrchestrator: string;
+      nativeExchangeStreams?: {
+        supportedVenues: string[];
+        connections: Array<{
+          venue: string;
+          isTestnet: boolean;
+          status: string;
+          symbols: string[];
+          connectedAt: number | null;
+          lastMessageAt: number | null;
+          lastError: string | null;
+          reconnectAttempts: number;
+        }>;
+      };
+      arbitrageDetector: string;
+      mlPredictor: string;
+      notificationService: string;
+      dexIntegration: string;
+      advancedRiskManager: string;
+      activePatterns: unknown[] | number;
+      trackedAssets: number;
+      activeOpportunities: number;
+      arbitrageOpportunities: number;
+      notificationSubscriptions: number;
+    }>('/health');
+  },
+
   isAuthenticated(): boolean {
     return Boolean(localStorage.getItem(TOKEN_KEY));
   },
@@ -435,6 +470,25 @@ export const api = {
         notes: string;
       };
     }>('/exchange/capabilities');
+  },
+
+  async getExchangeStreamingStatus() {
+    return request<{
+      success: boolean;
+      streaming: {
+        supportedVenues: string[];
+        connections: Array<{
+          venue: string;
+          isTestnet: boolean;
+          status: string;
+          symbols: string[];
+          connectedAt: number | null;
+          lastMessageAt: number | null;
+          lastError: string | null;
+          reconnectAttempts: number;
+        }>;
+      };
+    }>('/exchange/streaming/status');
   },
 
   async getExchangeConnection(id: string) {

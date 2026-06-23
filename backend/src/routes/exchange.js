@@ -5,6 +5,7 @@ import { ExchangeConnector } from '../services/exchangeConnector.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { getMarketCandles } from '../services/marketFeedService.js';
 import { SUPPORTED_TRADING_VENUES } from '../config/tradingVenues.js';
+import { nativeExchangeStreamService, SUPPORTED_NATIVE_WS_VENUES } from '../services/nativeExchangeStreamService.js';
 
 const router = express.Router();
 
@@ -56,7 +57,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: true,
     assetClasses: ['crypto spot', 'crypto futures'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'Uses Binance testnet URLs when isTestnet=true. Live path uses api.binance.com/fapi.binance.com.'
@@ -65,7 +66,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: true,
     assetClasses: ['crypto spot'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret', 'passphrase'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'Sandbox uses api-public.sandbox.exchange.coinbase.com. Connector is written against Exchange-style REST routes.'
@@ -74,7 +75,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: false,
     assetClasses: ['crypto spot'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'No separate testnet path is configured in this codebase.'
@@ -83,7 +84,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: true,
     assetClasses: ['crypto spot'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret', 'passphrase'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'Sandbox uses openapi-sandbox.kucoin.com.'
@@ -92,7 +93,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: true,
     assetClasses: ['crypto spot'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'Uses Bybit v5 REST endpoints and api-testnet.bybit.com for paper mode.'
@@ -110,7 +111,7 @@ const VENUE_CAPABILITIES = {
     live: true,
     paper: false,
     assetClasses: ['crypto spot'],
-    transport: { marketData: 'REST', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: false },
+    transport: { marketData: 'REST + native WS', account: 'REST', orders: 'REST', platformWebSocket: true, nativeExchangeWebSocket: true },
     credentials: ['apiKey', 'apiSecret'],
     supports: ['ticker', 'orderBook', 'klines', 'createOrder', 'getAccount', 'cancelOrder', 'getOpenOrders'],
     notes: 'No paper/testnet URL is configured in this codebase.'
@@ -250,13 +251,61 @@ router.get('/capabilities', async (req, res) => {
         path: '/ws',
         authEvent: 'auth',
         subscribeEvent: 'subscribe',
-        channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData'],
-        notes: 'This codebase broadcasts platform events over /ws. Native exchange streaming sockets are not implemented in the venue connectors.'
+        channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData', 'nativeMarketData'],
+        notes: 'This codebase broadcasts platform events over /ws and now relays normalized native exchange ticker/trade updates as nativeMarketData.'
+      },
+      nativeWebSocket: {
+        venues: [...SUPPORTED_NATIVE_WS_VENUES],
+        statusEndpoint: '/api/exchange/streaming/status',
+        subscribeEndpoint: '/api/exchange/streaming/subscribe',
+        unsubscribeEndpoint: '/api/exchange/streaming/unsubscribe'
       }
     });
   } catch (error) {
     logger.error('Exchange capability lookup error:', error);
     res.status(500).json({ success: false, error: 'Failed to load exchange capabilities' });
+  }
+});
+
+router.get('/streaming/status', async (req, res) => {
+  try {
+    res.json({
+      success: true,
+      streaming: nativeExchangeStreamService.getStatus()
+    });
+  } catch (error) {
+    logger.error('Native exchange streaming status error:', error);
+    res.status(500).json({ success: false, error: 'Failed to load streaming status' });
+  }
+});
+
+router.post('/streaming/subscribe', authenticate, async (req, res) => {
+  try {
+    const { venue, symbols = [], isTestnet = false } = req.body || {};
+    const streaming = await nativeExchangeStreamService.subscribe({ venue, symbols, isTestnet });
+
+    res.json({
+      success: true,
+      streaming
+    });
+  } catch (error) {
+    logger.error('Native exchange streaming subscribe error:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
+
+router.post('/streaming/unsubscribe', authenticate, async (req, res) => {
+  try {
+    const { venue, symbols = [], isTestnet = false } = req.body || {};
+    const streaming = await nativeExchangeStreamService.unsubscribe({ venue, symbols, isTestnet });
+
+    res.json({
+      success: true,
+      streaming
+    });
+  } catch (error) {
+    logger.error('Native exchange streaming unsubscribe error:', error);
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 

@@ -32,6 +32,7 @@ import { enhancedBacktestEngine } from './services/enhancedBacktestEngine.js';
 import { walletConnectService } from './services/walletConnectService.js';
 import { oandaForexService } from './services/oandaForex.js';
 import { agentOrchestrator } from './services/agentOrchestrator.js';
+import { nativeExchangeStreamService } from './services/nativeExchangeStreamService.js';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -59,7 +60,8 @@ import mt5Routes from './routes/mt5.js';
 import agentRoutes from './routes/agents.js';
 import auditRoutes from './routes/audit.js';
 
-dotenv.config({ path: join(__dirname, '../../.env') });
+dotenv.config({ path: join(__dirname, '../../.env.local') });
+dotenv.config({ path: join(__dirname, '../../.env'), override: false });
 validateEnv();
 
 const app = express();
@@ -68,8 +70,28 @@ const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
 // Security middleware
 app.use(helmet());
+const allowedOrigins = new Set([
+  process.env.FRONTEND_URL,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'http://localhost:4174',
+  'http://127.0.0.1:4174',
+  'http://localhost:4175',
+  'http://127.0.0.1:4175',
+  'https://tradeflow.thaleos.network',
+  'https://traderflow-ai-production.up.railway.app'
+].filter(Boolean));
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true
 }));
 
@@ -128,17 +150,41 @@ advancedRiskManager.agentOrchestrator = agentOrchestrator;
 tradingEngine.initialize();
 patternScanner.initialize();
 
+nativeExchangeStreamService.attach({
+  wss,
+  tradingEngine,
+  agentOrchestrator
+});
+
+const defaultCryptoSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+const defaultUsdSymbols = ['BTCUSD', 'ETHUSD', 'SOLUSD'];
+
 // Initialize Asset Scanner (with default exchange configs)
 const exchangeConfigs = [
   { exchange: 'binance', isTestnet: true },
   { exchange: 'coinbase', isTestnet: true },
   { exchange: 'kraken', isTestnet: false },
   { exchange: 'kucoin', isTestnet: true },
-  { exchange: 'bybit', isTestnet: true },
+  { exchange: 'bybit', isTestnet: false },
   { exchange: 'gemini', isTestnet: true },
   { exchange: 'bitfinex', isTestnet: false },
   { exchange: 'oanda', isTestnet: true }
 ];
+
+nativeExchangeStreamService.initialize({
+  subscriptions: [
+    { venue: 'binance', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
+    { venue: 'coinbase', symbols: defaultUsdSymbols, isTestnet: true },
+    { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false },
+    { venue: 'kucoin', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
+    { venue: 'bybit', symbols: defaultCryptoSymbols, isTestnet: false },
+    { venue: 'bitfinex', symbols: defaultUsdSymbols, isTestnet: false }
+  ]
+}).then(() => {
+  logger.info('Native exchange streaming adapters initialized');
+}).catch(err => {
+  logger.error('Failed to initialize native exchange streaming adapters:', err.message);
+});
 
 assetScanner.initialize(exchangeConfigs).then(() => {
   logger.info('Asset Scanner initialized with multi-exchange support');
@@ -216,6 +262,7 @@ app.get('/api/health', (req, res) => {
     assetScanner: assetScanner.isRunning ? 'running' : 'stopped',
     autoExecution: autoExecution.isRunning ? 'running' : 'stopped',
     agentOrchestrator: agentOrchestrator.isInitialized ? 'initialized' : 'not_initialized',
+    nativeExchangeStreams: nativeExchangeStreamService.getStatus(),
     arbitrageDetector: arbitrageDetector.isRunning ? 'running' : 'stopped',
     mlPredictor: 'initialized',
     notificationService: notificationService.isInitialized ? 'initialized' : 'not_initialized',

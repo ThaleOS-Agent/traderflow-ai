@@ -126,10 +126,12 @@ function App() {
     setCurrentView('landing');
   };
 
+  const subscriptionTier = typeof user?.subscription === 'object' && user.subscription
+    ? String((user.subscription as { tier?: unknown }).tier ?? '')
+    : '';
+  const directTier = typeof user?.tier === 'string' ? user.tier : '';
+  const userTier = subscriptionTier || directTier || (user?.isFounder === true ? 'founder' : 'free');
   const userEmail = typeof user?.email === 'string' ? user.email : '';
-  const userTier = typeof user?.subscription === 'object' && user.subscription
-    ? String((user.subscription as { tier?: unknown }).tier ?? 'free')
-    : 'free';
   const isFounder = userTier === 'founder';
 
   if (!authChecked) {

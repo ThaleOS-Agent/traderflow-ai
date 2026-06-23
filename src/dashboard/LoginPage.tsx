@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck, Wallet, Crown } from 'lucide-react';
 import { api } from './api';
 
 interface LoginPageProps {
@@ -8,11 +8,23 @@ interface LoginPageProps {
 
 type Mode = 'login' | 'register';
 
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+      on: (event: string, cb: (...args: unknown[]) => void) => void;
+      removeListener: (event: string, cb: (...args: unknown[]) => void) => void;
+    };
+  }
+}
+
 export function LoginPage({ onLogin }: LoginPageProps) {
   const [mode, setMode] = useState<Mode>('login');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [founderLoading, setFounderLoading] = useState(false);
   const [error, setError] = useState('');
+  const [founderError, setFounderError] = useState('');
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -24,6 +36,30 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   const set = (field: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(prev => ({ ...prev, [field]: e.target.value }));
+
+  const isFounderUser = (user: Record<string, unknown>) => {
+    if (user.isFounder === true) {
+      return true;
+    }
+
+    const subscription = user.subscription;
+    if (subscription && typeof subscription === 'object' && 'tier' in subscription) {
+      return String((subscription as { tier?: unknown }).tier ?? '') === 'founder';
+    }
+
+    return String(user.tier ?? '') === 'founder';
+  };
+
+  const normalizeFounderUser = (user: Record<string, unknown>, walletAddress: string) => ({
+    ...user,
+    walletAddress,
+    isFounder: true,
+    subscription: {
+      tier: 'founder',
+      status: 'lifetime',
+      expiresAt: null,
+    },
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +85,58 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleFounderWalletLogin = async () => {
+    setFounderError('');
+
+    if (!window.ethereum) {
+      setFounderError('MetaMask not detected. Install a compatible EVM wallet for Founder access.');
+      return;
+    }
+
+    setFounderLoading(true);
+
+    try {
+      const sessionRes = await api.createWalletSession();
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }) as string[];
+      const address = accounts[0];
+
+      if (!address) {
+        throw new Error('No wallet account returned');
+      }
+
+      const chainIdHex = await window.ethereum.request({ method: 'eth_chainId' }) as string;
+      const chainId = parseInt(chainIdHex, 16);
+      const signature = await window.ethereum.request({
+        method: 'personal_sign',
+        params: [sessionRes.session.message, address],
+      }) as string;
+
+      const data = await api.verifyWallet({
+        sessionId: sessionRes.session.id,
+        address,
+        chainId,
+        signature,
+        message: sessionRes.session.message,
+      });
+
+      if (!isFounderUser(data.user)) {
+        api.logout();
+        throw new Error('Wallet authenticated, but this address is not allowlisted for Founder access.');
+      }
+
+      onLogin(normalizeFounderUser(data.user, address.toLowerCase()));
+    } catch (err) {
+      const walletError = err as { code?: number; message?: string };
+      if (walletError.code === 4001) {
+        setFounderError('Wallet signature request was rejected.');
+      } else {
+        setFounderError(walletError.message ?? 'Founder wallet login failed.');
+      }
+    } finally {
+      setFounderLoading(false);
     }
   };
 
@@ -210,6 +298,43 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               {!loading && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
+
+          <div className="mt-8 rounded-[28px] border border-amber-300/20 bg-[linear-gradient(180deg,rgba(120,53,15,0.16),rgba(10,14,23,0.24))] p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-amber-300/70">Founder access</p>
+                <h2 className="mt-2 flex items-center gap-2 text-lg font-semibold text-white">
+                  <Crown className="h-5 w-5 text-amber-300" />
+                  Wallet-only Founder sign-in
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  Founder accounts use the wallet allowlist path and receive lifetime premium access across all bots, strategies, paper, and live execution controls.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 text-sm text-slate-300 md:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">Allowlisted EVM wallet required</div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">No password fallback</div>
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">Immediate Founder tier session</div>
+            </div>
+
+            {founderError && (
+              <div className="mt-4 rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
+                {founderError}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleFounderWalletLogin}
+              disabled={founderLoading}
+              className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-300/30 bg-amber-300/90 px-6 py-4 text-base font-semibold text-slate-950 transition-colors hover:bg-amber-200 disabled:opacity-60"
+            >
+              {founderLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wallet className="h-4 w-4" />}
+              {founderLoading ? 'Verifying Founder wallet' : 'Enter with Founder wallet'}
+            </button>
+          </div>
 
           <p className="mt-6 text-center text-sm text-slate-500">
             {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}

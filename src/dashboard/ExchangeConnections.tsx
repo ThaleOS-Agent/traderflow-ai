@@ -35,7 +35,6 @@ const SUPPORTED_VENUES = [
   { value: 'kraken', label: 'Kraken', type: 'Exchange', hint: 'API key + secret' },
   { value: 'kucoin', label: 'KuCoin', type: 'Exchange', hint: 'API key + secret + passphrase' },
   { value: 'bybit', label: 'Bybit', type: 'Exchange', hint: 'API key + secret' },
-  { value: 'ftx', label: 'FTX / Legacy', type: 'Exchange', hint: 'Legacy connector' },
   { value: 'gemini', label: 'Gemini', type: 'Exchange', hint: 'API key + secret' },
   { value: 'bitfinex', label: 'Bitfinex', type: 'Exchange', hint: 'API key + secret' },
   { value: 'interactive_brokers', label: 'Interactive Brokers', type: 'Broker', hint: 'OAuth bearer token' },

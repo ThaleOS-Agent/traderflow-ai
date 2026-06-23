@@ -45,7 +45,6 @@ const VENUE_DETAILS = {
   kraken: { label: 'Kraken', type: 'exchange', credentialHint: 'API key + secret' },
   kucoin: { label: 'KuCoin', type: 'exchange', credentialHint: 'API key + secret + passphrase' },
   bybit: { label: 'Bybit', type: 'exchange', credentialHint: 'API key + secret' },
-  ftx: { label: 'FTX / Legacy', type: 'exchange', credentialHint: 'Legacy connector' },
   gemini: { label: 'Gemini', type: 'exchange', credentialHint: 'API key + secret' },
   bitfinex: { label: 'Bitfinex', type: 'exchange', credentialHint: 'API key + secret' },
   interactive_brokers: { label: 'Interactive Brokers', type: 'broker', credentialHint: 'OAuth bearer token' },

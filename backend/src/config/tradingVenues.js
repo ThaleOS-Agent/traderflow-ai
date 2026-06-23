@@ -4,7 +4,6 @@ export const SUPPORTED_TRADING_VENUES = Object.freeze([
   'kraken',
   'kucoin',
   'bybit',
-  'ftx',
   'gemini',
   'bitfinex',
   'interactive_brokers',

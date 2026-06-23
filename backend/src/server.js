@@ -60,6 +60,7 @@ import agentRoutes from './routes/agents.js';
 import auditRoutes from './routes/audit.js';
 
 dotenv.config({ path: join(__dirname, '../../.env') });
+validateEnv();
 
 const app = express();
 const httpServer = createServer(app);
@@ -93,7 +94,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', limiter);
 
-// Connect to database
+// Connect to database only after required env is present.
 connectDB();
 
 // Setup WebSocket
@@ -134,7 +135,6 @@ const exchangeConfigs = [
   { exchange: 'kraken', isTestnet: false },
   { exchange: 'kucoin', isTestnet: true },
   { exchange: 'bybit', isTestnet: true },
-  { exchange: 'ftx', isTestnet: true },
   { exchange: 'gemini', isTestnet: true },
   { exchange: 'bitfinex', isTestnet: false },
   { exchange: 'oanda', isTestnet: true }
@@ -254,8 +254,6 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
-
-validateEnv();
 
 const PORT = process.env.PORT || 3001;
 

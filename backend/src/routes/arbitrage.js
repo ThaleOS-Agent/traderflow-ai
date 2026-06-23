@@ -85,7 +85,6 @@ router.get('/exchanges', authenticate, async (req, res) => {
       { name: 'kraken', supported: true },
       { name: 'kucoin', supported: true },
       { name: 'bybit', supported: true },
-      { name: 'ftx', supported: true },
       { name: 'gemini', supported: true },
       { name: 'bitfinex', supported: true },
       { name: 'interactive_brokers', supported: true },

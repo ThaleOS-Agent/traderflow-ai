@@ -113,6 +113,45 @@ export const api = {
     }>('/dashboard/strategy-results');
   },
 
+  async getAgentStatus() {
+    return request<{
+      success: boolean;
+      status: {
+        initialized: boolean;
+        canonicalExecutor: string;
+        sharedRiskManager: string;
+        agents: Array<{
+          id: string;
+          label: string;
+          role: string;
+          service: string;
+          domain: string;
+          stage: string;
+          description: string;
+          capabilities: string[];
+          status: string;
+          lastSeenAt: string;
+        }>;
+        stats: Record<string, number | string | null>;
+        contextCounts: Record<string, number>;
+      };
+    }>('/agents/status');
+  },
+
+  async getAgentEvents(limit = 12) {
+    return request<{
+      success: boolean;
+      events: Array<{
+        id: string;
+        source: string;
+        type: string;
+        status: string;
+        payload: Record<string, unknown>;
+        timestamp: string;
+      }>;
+    }>(`/agents/events?limit=${encodeURIComponent(String(limit))}`);
+  },
+
   async getAiLearning() {
     return request<{
       success: boolean;

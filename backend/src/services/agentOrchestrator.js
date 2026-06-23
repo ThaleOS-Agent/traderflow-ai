@@ -6,50 +6,103 @@ const MAX_EVENTS = 250;
 const DEFAULT_AGENTS = [
   {
     id: 'market_scanner',
+    label: 'Market Scanner',
     role: 'market_research',
     service: 'assetScanner',
+    domain: 'market',
+    stage: 'research',
+    description: 'Scans connected venues for liquid cross-asset setups and tradeable momentum.',
     capabilities: ['asset_discovery', 'technical_screening', 'opportunity_detection']
   },
   {
+    id: 'market_feed_research',
+    label: 'Market Feed Research',
+    role: 'market_research',
+    service: 'marketFeedService',
+    domain: 'market',
+    stage: 'research',
+    description: 'Normalizes crypto, forex, metals, and oil price feeds for cross-market context.',
+    capabilities: ['cross_asset_monitoring', 'price_normalization', 'venue_context']
+  },
+  {
+    id: 'news_research',
+    label: 'News Research',
+    role: 'news_research',
+    service: 'manual_news_review',
+    domain: 'news',
+    stage: 'research',
+    status: 'manual_review',
+    description: 'Tracks catalyst and macro-news coverage requirements until a live ingestion source is wired.',
+    capabilities: ['headline_triage', 'macro_catalyst_watch', 'manual_briefing']
+  },
+  {
     id: 'pattern_scanner',
+    label: 'Pattern Scanner',
     role: 'pattern_analysis',
     service: 'patternScanner',
+    domain: 'analysis',
+    stage: 'analysis',
+    description: 'Validates chart structures and converts harmonic patterns into executable plans.',
     capabilities: ['harmonic_patterns', 'pattern_validation', 'chart_signal_generation']
   },
   {
     id: 'arbitrage_detector',
+    label: 'Arbitrage Detector',
     role: 'cross_exchange_research',
     service: 'arbitrageDetector',
+    domain: 'market',
+    stage: 'opportunity',
+    description: 'Compares venue pricing to surface cross-exchange spreads and arbitrage windows.',
     capabilities: ['price_matrix', 'spread_detection', 'arbitrage_signal_generation']
   },
   {
     id: 'ml_predictor',
+    label: 'ML Predictor',
     role: 'machine_learning',
     service: 'mlPredictor',
+    domain: 'analysis',
+    stage: 'analysis',
+    description: 'Scores direction, volatility, and opportunity quality from learned model output.',
     capabilities: ['prediction_scoring', 'model_inference']
   },
   {
     id: 'ensemble_master',
+    label: 'Ensemble Master',
     role: 'strategy_ai',
     service: 'ensembleMaster',
+    domain: 'decision',
+    stage: 'decision',
+    description: 'Weights strategy signals into a single recommendation and learning loop.',
     capabilities: ['strategy_weighting', 'signal_generation', 'learning_feedback']
   },
   {
     id: 'advanced_risk_manager',
+    label: 'Advanced Risk Manager',
     role: 'risk_management',
     service: 'advancedRiskManager',
+    domain: 'risk',
+    stage: 'decision',
+    description: 'Applies shared pre-trade validation, exposure checks, and emergency constraints.',
     capabilities: ['pre_trade_check', 'portfolio_risk', 'emergency_stop']
   },
   {
     id: 'auto_execution_engine',
+    label: 'Auto Execution Engine',
     role: 'canonical_execution',
     service: 'autoExecution',
+    domain: 'execution',
+    stage: 'execution',
+    description: 'Dispatches approved paper or live orders through the canonical execution path.',
     capabilities: ['paper_order_dispatch', 'live_order_dispatch', 'portfolio_update']
   },
   {
     id: 'trading_engine',
+    label: 'Trading Engine',
     role: 'strategy_execution',
     service: 'tradingEngine',
+    domain: 'execution',
+    stage: 'execution',
+    description: 'Runs scheduled strategies, monitors positions, and feeds execution telemetry back into the system.',
     capabilities: ['market_data', 'scheduled_signals', 'position_monitoring']
   }
 ];
@@ -61,6 +114,7 @@ export class AgentOrchestrator {
     this.events = [];
     this.sharedContext = {
       market: {},
+      news: [],
       opportunities: [],
       patterns: [],
       arbitrage: [],
@@ -106,11 +160,15 @@ export class AgentOrchestrator {
     logger.info(`Agent Orchestrator initialized with ${this.agents.size} registered agent roles`);
   }
 
-  registerAgent({ id, role, service, capabilities = [], status = 'online' }) {
+  registerAgent({ id, label = id, role, service, domain = 'system', stage = 'research', description = '', capabilities = [], status = 'online' }) {
     this.agents.set(id, {
       id,
+      label,
       role,
       service,
+      domain,
+      stage,
+      description,
       capabilities,
       status,
       lastSeenAt: new Date().toISOString()
@@ -127,6 +185,8 @@ export class AgentOrchestrator {
   agentIdForSource(source) {
     if (this.agents.has(source)) return source;
     if (String(source).startsWith('training.')) return 'ensemble_master';
+    if (String(source).includes('news')) return 'news_research';
+    if (String(source).includes('feed')) return 'market_feed_research';
     if (String(source).includes('pattern')) return 'pattern_scanner';
     if (String(source).includes('arbitrage')) return 'arbitrage_detector';
     if (String(source).includes('ml')) return 'ml_predictor';
@@ -593,6 +653,7 @@ export class AgentOrchestrator {
       stats: this.stats,
       contextCounts: {
         market: Object.keys(this.sharedContext.market).length,
+        news: this.sharedContext.news.length,
         opportunities: this.sharedContext.opportunities.length,
         patterns: this.sharedContext.patterns.length,
         arbitrage: this.sharedContext.arbitrage.length,

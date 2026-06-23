@@ -3,7 +3,7 @@ import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
-  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu,
+  Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu, Bot, Newspaper,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveMarketData, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
@@ -155,6 +155,55 @@ interface LiveFeedEvent {
   timestamp: number;
 }
 
+interface AgentCardData {
+  id: string;
+  label: string;
+  role: string;
+  service: string;
+  domain: string;
+  stage: string;
+  description: string;
+  capabilities: string[];
+  status: string;
+  lastSeenAt: string;
+}
+
+interface AgentStatus {
+  initialized: boolean;
+  canonicalExecutor: string;
+  sharedRiskManager: string;
+  agents: AgentCardData[];
+  stats: {
+    ingestedEvents?: number;
+    routedOpportunities?: number;
+    approvedExecutions?: number;
+    rejectedExecutions?: number;
+    dispatchedExecutions?: number;
+    failedExecutions?: number;
+    lastEventAt?: string | null;
+  };
+  contextCounts: {
+    market?: number;
+    news?: number;
+    opportunities?: number;
+    patterns?: number;
+    arbitrage?: number;
+    ml?: number;
+    signals?: number;
+    riskDecisions?: number;
+    executions?: number;
+  };
+}
+
+interface AgentEvent {
+  id: string;
+  source: string;
+  type: string;
+  status: string;
+  payload: Record<string, unknown>;
+  timestamp: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
@@ -215,6 +264,22 @@ function describeLiveEvent(event: string, data: unknown): Pick<LiveFeedEvent, 't
     return { kind, title: 'Portfolio update', detail: 'Balances and exposure refreshed' };
   }
   return { kind, title: event, detail: 'WebSocket event received' };
+}
+
+function agentStatusTone(status: string) {
+  if (status === 'online') return 'bg-green-500/15 text-green-300 border-green-500/20';
+  if (status === 'manual_review') return 'bg-yellow-500/15 text-yellow-200 border-yellow-500/20';
+  return 'bg-white/5 text-gray-400 border-white/10';
+}
+
+function summarizeAgentEvent(event: AgentEvent) {
+  const payload = getRecord(event.payload);
+  const symbol = String(payload.symbol ?? '');
+  const exchange = String(payload.exchange ?? '');
+  if (symbol && exchange) return `${symbol} · ${exchange}`;
+  if (symbol) return symbol;
+  if (payload.reason) return String(payload.reason);
+  return event.type.replace(/_/g, ' ');
 }
 
 function StatCard({
@@ -287,6 +352,8 @@ export function Dashboard() {
   const [exchangeVenues, setExchangeVenues] = useState<ExchangeVenue[]>([]);
   const [showDashboardMenu, setShowDashboardMenu] = useState(false);
   const [liveEvents, setLiveEvents] = useState<LiveFeedEvent[]>([]);
+  const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
+  const [agentEvents, setAgentEvents] = useState<AgentEvent[]>([]);
   const [orderForm, setOrderForm] = useState({
     symbol: 'BTCUSDT',
     exchange: 'binance',
@@ -357,7 +424,7 @@ export function Dashboard() {
   }, [appendLiveEvent]);
 
   const refreshLiveData = useCallback(async () => {
-    const [portfolioRes, tradesRes, statsRes, feedRes, strategyRes, aiRes, exchangeRes] = await Promise.allSettled([
+    const [portfolioRes, tradesRes, statsRes, feedRes, strategyRes, aiRes, exchangeRes, agentStatusRes, agentEventsRes] = await Promise.allSettled([
       api.getPortfolio(),
       api.getTrades({ limit: 10 }),
       api.getTradeStats('30d'),
@@ -365,6 +432,8 @@ export function Dashboard() {
       api.getStrategyResults(),
       api.getAiLearning(),
       api.getExchangeConnections(),
+      api.getAgentStatus(),
+      api.getAgentEvents(),
     ]);
 
     if (portfolioRes.status === 'fulfilled') {
@@ -392,6 +461,8 @@ export function Dashboard() {
     if (feedRes.status === 'fulfilled') setMarketFeed(feedRes.value.marketData);
     if (strategyRes.status === 'fulfilled') setStrategyResults(strategyRes.value.results.slice(0, 4));
     if (exchangeRes.status === 'fulfilled') setExchangeVenues((exchangeRes.value.supported ?? []) as unknown as ExchangeVenue[]);
+    if (agentStatusRes.status === 'fulfilled') setAgentStatus(agentStatusRes.value.status);
+    if (agentEventsRes.status === 'fulfilled') setAgentEvents(agentEventsRes.value.events);
     if (aiRes.status === 'fulfilled') {
       setAiLearning({
         performance: aiRes.value.performance,
@@ -399,7 +470,7 @@ export function Dashboard() {
         models: aiRes.value.models,
       });
     }
-  }, []);
+  }, [appendLiveEvent]);
 
   const handleTradeUpdate = useCallback((trade: LiveTrade) => {
     handleTrade(trade);
@@ -437,7 +508,7 @@ export function Dashboard() {
     else setRefreshing(true);
     setError('');
     try {
-      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes, statsRes, feedRes, strategyRes, aiRes, exchangeRes] = await Promise.allSettled([
+      const [portfolioRes, tradesRes, signalsRes, subRes, settingsRes, statsRes, feedRes, strategyRes, aiRes, exchangeRes, agentStatusRes, agentEventsRes] = await Promise.allSettled([
         api.getPortfolio(),
         api.getTrades({ limit: 10 }),
         api.getSignals(),
@@ -448,6 +519,8 @@ export function Dashboard() {
         api.getStrategyResults(),
         api.getAiLearning(),
         api.getExchangeConnections(),
+        api.getAgentStatus(),
+        api.getAgentEvents(),
       ]);
 
       if (portfolioRes.status === 'fulfilled') {
@@ -486,6 +559,12 @@ export function Dashboard() {
       }
       if (exchangeRes.status === 'fulfilled') {
         setExchangeVenues((exchangeRes.value.supported ?? []) as unknown as ExchangeVenue[]);
+      }
+      if (agentStatusRes.status === 'fulfilled') {
+        setAgentStatus(agentStatusRes.value.status);
+      }
+      if (agentEventsRes.status === 'fulfilled') {
+        setAgentEvents(agentEventsRes.value.events);
       }
     } catch {
       setError('Failed to load dashboard data. Check your connection.');
@@ -691,6 +770,10 @@ export function Dashboard() {
   const statsProfitFactor = Number(tradeStats?.profitFactor ?? 0);
   const activeExchangeName = trades.find(trade => trade.exchange)?.exchange;
   const configuredVenues = exchangeVenues.filter(venue => venue.configured);
+  const trackedAgents = agentStatus?.agents ?? [];
+  const newsResearchAgent = trackedAgents.find(agent => agent.domain === 'news');
+  const pipelineCounts = agentStatus?.contextCounts ?? {};
+  const pipelineStats = agentStatus?.stats ?? {};
   const orderVenues = (exchangeVenues.length ? exchangeVenues : [
     { name: 'binance', label: 'Binance', type: 'exchange' },
     { name: 'coinbase', label: 'Coinbase Advanced Trade', type: 'exchange' },
@@ -701,7 +784,7 @@ export function Dashboard() {
     { name: 'bitfinex', label: 'Bitfinex', type: 'exchange' },
     { name: 'interactive_brokers', label: 'Interactive Brokers', type: 'broker' },
     { name: 'oanda', label: 'OANDA', type: 'broker' },
-  ]).filter(venue => venue.name !== 'ftx');
+  ]);
   const visibleStrategyResults = strategyResults.length > 0 ? strategyResults : [
     { strategy: 'xq_trade_m8', totalTrades: 0, winningTrades: 0, losingTrades: 0, openTrades: 0, pnl: 0, avgProfitPercent: 0, activeSignals: 0, avgConfidence: 90.4, winRate: 90.4, latestSignal: null },
     { strategy: 'quantum_ai', totalTrades: 0, winningTrades: 0, losingTrades: 0, openTrades: 0, pnl: 0, avgProfitPercent: 0, activeSignals: 0, avgConfidence: 84.8, winRate: 84.8, latestSignal: null },
@@ -746,6 +829,7 @@ export function Dashboard() {
               <div className="absolute right-0 mt-2 w-56 bg-[#0b0b10] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
                 {[
                   ['overview', 'Portfolio Overview'],
+                  ['agent-grid', 'Research Bot Grid'],
                   ['live-market-feed', 'Live Market Feed'],
                   ['live-signals-orders', 'Live Signals & Orders'],
                   ['strategy-results', 'Strategy Results'],
@@ -839,6 +923,144 @@ export function Dashboard() {
       {/* Live Chart — full width */}
       <div className="mb-6">
         <TradingViewChart />
+      </div>
+
+      <div id="agent-grid" className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-6 mb-6 scroll-mt-24">
+        <div className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_38%),linear-gradient(135deg,rgba(8,12,22,0.98),rgba(5,5,8,0.96))] p-5">
+          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-5">
+            <div>
+              <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/80">Research Bot Grid</p>
+              <h2 className="mt-2 text-xl font-semibold text-white">Market, news, analysis, risk, and execution coverage</h2>
+              <p className="mt-2 text-sm text-gray-400 max-w-2xl">
+                This control surface shows every registered bot in the pipeline instead of only the trade widgets.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs min-w-[220px]">
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <p className="text-gray-500">Bots</p>
+                <p className="mt-1 text-lg font-semibold text-white">{trackedAgents.length}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <p className="text-gray-500">Opportunities</p>
+                <p className="mt-1 text-lg font-semibold text-white">{pipelineCounts.opportunities ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <p className="text-gray-500">Approved</p>
+                <p className="mt-1 text-lg font-semibold text-white">{pipelineStats.approvedExecutions ?? 0}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2">
+                <p className="text-gray-500">Dispatched</p>
+                <p className="mt-1 text-lg font-semibold text-white">{pipelineStats.dispatchedExecutions ?? 0}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {trackedAgents.map(agent => (
+              <div key={agent.id} className="rounded-xl border border-white/10 bg-black/25 p-4 backdrop-blur-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 border border-white/10">
+                        {agent.domain === 'news' ? <Newspaper className="w-4 h-4 text-yellow-300" /> : <Bot className="w-4 h-4 text-cyan-300" />}
+                      </span>
+                      <div>
+                        <p className="text-white font-semibold">{agent.label}</p>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{agent.stage} · {agent.domain}</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-400">{agent.description}</p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${agentStatusTone(agent.status)}`}>
+                    {agent.status.replace(/_/g, ' ')}
+                  </span>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {agent.capabilities.slice(0, 3).map(capability => (
+                    <span key={capability} className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-gray-300">
+                      {capability.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-cyan-500/15 flex items-center justify-center">
+                <Brain className="w-4 h-4 text-cyan-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Pipeline Snapshot</h3>
+                <p className="text-xs text-gray-500">Research to execution counts from the orchestrator</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                ['Market', pipelineCounts.market ?? 0],
+                ['News', pipelineCounts.news ?? 0],
+                ['Patterns', pipelineCounts.patterns ?? 0],
+                ['Signals', pipelineCounts.signals ?? 0],
+                ['Risk', pipelineCounts.riskDecisions ?? 0],
+                ['Exec', pipelineCounts.executions ?? 0],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">{label}</p>
+                  <p className="mt-1 text-lg font-semibold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-yellow-500/15 flex items-center justify-center">
+                <Newspaper className="w-4 h-4 text-yellow-300" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">News Research Coverage</h3>
+                <p className="text-xs text-gray-500">Explicitly tracked so the UI does not imply news analysis exists when it does not.</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/5 px-4 py-3">
+              <p className="text-sm text-yellow-100">{newsResearchAgent?.label ?? 'News Research'}</p>
+              <p className="mt-1 text-xs text-yellow-200/80">{newsResearchAgent?.description ?? 'No news-research agent metadata available.'}</p>
+              <p className="mt-3 text-[11px] uppercase tracking-[0.18em] text-yellow-300/80">
+                Status: {(newsResearchAgent?.status ?? 'not_registered').replace(/_/g, ' ')}
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="h-9 w-9 rounded-xl bg-white/10 flex items-center justify-center">
+                <Radio className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider">Agent Events</h3>
+                <p className="text-xs text-gray-500">Most recent orchestrator decisions and dispatches</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {agentEvents.length === 0 ? (
+                <p className="text-sm text-gray-500">No agent events have been recorded yet.</p>
+              ) : agentEvents.map(event => (
+                <div key={event.id} className="rounded-xl border border-white/10 bg-black/20 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm text-white font-medium">{event.type.replace(/_/g, ' ')}</p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${agentStatusTone(event.status)}`}>
+                      {event.status}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">{summarizeAgentEvent(event)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Cross-asset market feed + strategy/AI status */}

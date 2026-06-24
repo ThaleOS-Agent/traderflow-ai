@@ -117,7 +117,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api', limiter);
 
 // Connect to database only after required env is present.
-connectDB();
+await connectDB();
 
 // Setup WebSocket
 setupWebSocket(wss);

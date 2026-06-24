@@ -4,6 +4,7 @@ import {
   Loader2, Save, ChevronLeft, Database, Key, Eye, EyeOff
 } from 'lucide-react';
 import { api } from './api';
+import { WalletConnect } from './WalletConnect';
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -15,10 +16,18 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showApiSecret, setShowApiSecret] = useState(false);
+  const [availableStrategies, setAvailableStrategies] = useState<Array<{
+    code: string;
+    name: string;
+    description: string;
+    type: string;
+    supportedAssets: string[];
+  }>>([]);
 
   const [settings, setSettings] = useState({
     paperTrading: true,
     autoTrading: false,
+    defaultStrategy: 'quantum_ai',
     maxDailyLoss: 100,
     maxPositionSize: 1000,
     stopLossPercent: 2,
@@ -53,9 +62,20 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
         api.getTradingSettings(),
         api.getMt5Status(),
       ]);
+      const strategiesRes = await api.getAvailableStrategies().catch(() => null);
+
+      if (strategiesRes?.strategies) {
+        setAvailableStrategies(strategiesRes.strategies);
+      }
 
       if (settingsRes.status === 'fulfilled') {
-        setSettings(prev => ({ ...prev, ...settingsRes.value }));
+        const nextSettings = settingsRes.value.settings;
+        setSettings(prev => ({
+          ...prev,
+          ...nextSettings,
+          riskLevel: (nextSettings.riskLevel as 'low' | 'medium' | 'high') || prev.riskLevel,
+          defaultStrategy: nextSettings.defaultStrategy || prev.defaultStrategy,
+        }));
       }
       if (mt5Res.status === 'fulfilled') {
         const res = mt5Res.value as { mode?: string; account?: { accountNumber?: string } };
@@ -211,6 +231,29 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                     }`}
                   />
                 </button>
+              </div>
+
+              <div>
+                <label className="block text-sm text-gray-400 mb-2">Default Strategy</label>
+                <select
+                  value={settings.defaultStrategy}
+                  onChange={(e) => setSettings(prev => ({ ...prev, defaultStrategy: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500/50"
+                >
+                  {availableStrategies.length === 0 ? (
+                    <option value={settings.defaultStrategy}>{settings.defaultStrategy.replace(/_/g, ' ')}</option>
+                  ) : (
+                    availableStrategies.map((strategy) => (
+                      <option key={strategy.code} value={strategy.code}>
+                        {strategy.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <p className="mt-2 text-xs text-gray-500">
+                  {availableStrategies.find(strategy => strategy.code === settings.defaultStrategy)?.description ||
+                    'Choose which algorithm the automation engine should prioritize by default.'}
+                </p>
               </div>
             </div>
           </div>
@@ -452,6 +495,9 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
             </div>
 
             <div className="space-y-2 text-xs">
+              <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-3 text-amber-100">
+                Founder access is controlled by the database account tier. Wallets can be linked here for convenience, but they do not grant Founder privileges.
+              </div>
               <button className="w-full py-1.5 bg-white/5 hover:bg-white/10 rounded border border-white/10 transition-colors">
                 Change Password
               </button>
@@ -462,6 +508,17 @@ export function SettingsPage({ onBack }: SettingsPageProps) {
                 Delete Account
               </button>
             </div>
+          </div>
+
+          <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Key className="w-5 h-5 text-cyan-400" />
+              <h2 className="text-lg font-semibold">Wallet Linking</h2>
+            </div>
+            <p className="mb-4 text-xs text-gray-500">
+              Optional wallet connection for account linking and signing workflows. This is no longer part of Founder authentication.
+            </p>
+            <WalletConnect />
           </div>
         </div>
       </div>

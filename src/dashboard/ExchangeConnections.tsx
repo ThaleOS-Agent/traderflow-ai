@@ -41,6 +41,35 @@ interface VenueCapabilityFallback extends SupportedVenue {
   connection?: ExchangeConnection | null;
 }
 
+interface StreamingConnection {
+  venue: string;
+  exchange?: string;
+  isTestnet: boolean;
+  transport?: string;
+  status: string;
+  healthScore?: number;
+  healthBand?: string;
+  symbols: string[];
+  connectedAt: number | null;
+  lastMessageAt: number | null;
+  latencyMs?: number | null;
+  reconnectCount?: number;
+  missedPings?: number;
+  sequenceGaps?: number;
+  messageRate?: number;
+  warnings?: string[];
+  recommendations?: string[];
+  recoveryActions?: string[];
+}
+
+interface StreamingStatus {
+  queues?: Record<string, { name: string; depth: number; dropped: number }>;
+  connections: StreamingConnection[];
+  warnings?: string[];
+  recommendations?: string[];
+  recoveryActions?: string[];
+}
+
 const defaultForm = {
   name: 'binance',
   apiKey: '',
@@ -73,6 +102,7 @@ function venueMeta(name: string) {
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
   const [supportedVenues, setSupportedVenues] = useState<SupportedVenue[]>([]);
+  const [streamingStatus, setStreamingStatus] = useState<StreamingStatus | null>(null);
   const [platformSocket, setPlatformSocket] = useState<{
     path: string;
     authEvent: string;
@@ -89,22 +119,39 @@ export function ExchangeConnections() {
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    try {
-      const [res, caps] = await Promise.all([
-        api.getExchangeConnections(),
-        api.getExchangeCapabilities(),
-      ]);
-      setConnections(res.connections as unknown as ExchangeConnection[]);
-      setSupportedVenues((caps.venues?.length ? caps.venues : res.supported ?? []) as unknown as SupportedVenue[]);
-      setPlatformSocket(caps.platformWebSocket ?? null);
-    } catch {
+    const [connectionsResult, capabilitiesResult, streamingResult] = await Promise.allSettled([
+      api.getExchangeConnections(),
+      api.getExchangeCapabilities(),
+      api.getExchangeStreamingStatus(),
+    ]);
+
+    if (connectionsResult.status === 'fulfilled') {
+      setConnections(connectionsResult.value.connections as unknown as ExchangeConnection[]);
+    } else {
       setConnections([]);
+    }
+
+    if (capabilitiesResult.status === 'fulfilled') {
+      const fallbackSupported = connectionsResult.status === 'fulfilled' ? connectionsResult.value.supported ?? [] : [];
+      setSupportedVenues((capabilitiesResult.value.venues?.length ? capabilitiesResult.value.venues : fallbackSupported) as unknown as SupportedVenue[]);
+      setPlatformSocket(capabilitiesResult.value.platformWebSocket ?? null);
+    } else {
       setSupportedVenues([]);
       setPlatformSocket(null);
+    }
+
+    if (streamingResult.status === 'fulfilled') {
+      setStreamingStatus(streamingResult.value.streaming as StreamingStatus);
+    } else {
+      setStreamingStatus(null);
     }
   }, []);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const interval = window.setInterval(() => { void load(); }, 15000);
+    return () => window.clearInterval(interval);
+  }, [load]);
 
   const save = async () => {
     setSaving(true);
@@ -187,6 +234,15 @@ export function ExchangeConnections() {
         </div>
       </div>
 
+      <div className="mb-4 flex justify-end">
+        <a
+          href="/connections/accounts"
+          className="inline-flex items-center gap-2 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-4 py-2 text-xs text-cyan-100 hover:bg-cyan-500/15"
+        >
+          Open THAELIA Account Monitor
+        </a>
+      </div>
+
       {platformSocket && (
         <div className="mb-4 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3">
           <div className="flex items-start gap-3">
@@ -202,6 +258,80 @@ export function ExchangeConnections() {
               <p className="mt-2 text-xs text-cyan-200/70">{platformSocket.notes}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {streamingStatus && (
+        <div className="mb-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-emerald-100">THAELIA Gateway Monitor</p>
+              <p className="mt-1 text-xs text-emerald-100/80">
+                Live transport health, reconnect pressure, queue depth, and recovery recommendations.
+              </p>
+            </div>
+            <div className="text-right text-[11px] text-emerald-200/80">
+              {Object.values(streamingStatus.queues ?? {}).map(queue => (
+                <p key={queue.name}>
+                  {queue.name}: {queue.depth} queued / {queue.dropped} dropped
+                </p>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {streamingStatus.connections.length ? streamingStatus.connections.map(connection => (
+              <div key={`${connection.venue}-${connection.isTestnet ? 'test' : 'live'}`} className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold text-white">
+                      {venueMeta(connection.venue).label} · {connection.status}
+                      <span className={`ml-2 ${connection.healthBand === 'green' ? 'text-green-300' : connection.healthBand === 'amber' ? 'text-yellow-300' : 'text-red-300'}`}>
+                        {connection.healthScore ?? 0}/100
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-gray-400">
+                      {connection.transport ?? 'websocket'} · {connection.isTestnet ? 'testnet/practice' : 'live'} · {connection.symbols.join(', ')}
+                    </p>
+                  </div>
+                  <div className="text-right text-[11px] text-gray-300">
+                    <p>Latency {connection.latencyMs ?? 'n/a'} ms</p>
+                    <p>Reconnects {connection.reconnectCount ?? 0} · Msg/min {connection.messageRate ?? 0}</p>
+                    <p>Missed pings {connection.missedPings ?? 0} · Sequence gaps {connection.sequenceGaps ?? 0}</p>
+                  </div>
+                </div>
+                {(connection.warnings?.length || connection.recommendations?.length || connection.recoveryActions?.length) ? (
+                  <div className="mt-2 grid gap-2 lg:grid-cols-3 text-[11px]">
+                    <p className="rounded-md bg-red-500/10 px-2 py-1 text-red-200">
+                      Warnings: {(connection.warnings ?? []).join(' · ') || 'none'}
+                    </p>
+                    <p className="rounded-md bg-yellow-500/10 px-2 py-1 text-yellow-100">
+                      Recommendations: {(connection.recommendations ?? []).join(' · ') || 'none'}
+                    </p>
+                    <p className="rounded-md bg-cyan-500/10 px-2 py-1 text-cyan-100">
+                      Recovery: {(connection.recoveryActions ?? []).join(' · ') || 'none'}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            )) : (
+              <p className="text-xs text-emerald-100/75">No gateway transports are active yet.</p>
+            )}
+          </div>
+
+          {(streamingStatus.warnings?.length || streamingStatus.recommendations?.length || streamingStatus.recoveryActions?.length) ? (
+            <div className="mt-3 grid gap-2 lg:grid-cols-3 text-[11px]">
+              <p className="rounded-md bg-red-500/10 px-2 py-2 text-red-100">
+                Global warnings: {(streamingStatus.warnings ?? []).join(' · ') || 'none'}
+              </p>
+              <p className="rounded-md bg-yellow-500/10 px-2 py-2 text-yellow-100">
+                Recommendations: {(streamingStatus.recommendations ?? []).join(' · ') || 'none'}
+              </p>
+              <p className="rounded-md bg-cyan-500/10 px-2 py-2 text-cyan-100">
+                Recovery actions: {(streamingStatus.recoveryActions ?? []).join(' · ') || 'none'}
+              </p>
+            </div>
+          ) : null}
         </div>
       )}
 

@@ -251,14 +251,16 @@ router.get('/capabilities', async (req, res) => {
         path: '/ws',
         authEvent: 'auth',
         subscribeEvent: 'subscribe',
-        channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData', 'nativeMarketData'],
-        notes: 'This codebase broadcasts platform events over /ws and now relays normalized native exchange ticker/trade updates as nativeMarketData.'
+        channels: ['signals', 'trades', 'orders', 'portfolio', 'marketData', 'nativeMarketData', 'gatewaySignal', 'executionRoute', 'gatewayAudit'],
+        notes: 'This codebase broadcasts platform events over /ws and now relays gateway-normalized exchange events, worker analytics, execution routing, and audit updates.'
       },
       nativeWebSocket: {
         venues: [...SUPPORTED_NATIVE_WS_VENUES],
         statusEndpoint: '/api/exchange/streaming/status',
         subscribeEndpoint: '/api/exchange/streaming/subscribe',
-        unsubscribeEndpoint: '/api/exchange/streaming/unsubscribe'
+        unsubscribeEndpoint: '/api/exchange/streaming/unsubscribe',
+        routePreviewEndpoint: '/api/exchange/streaming/route-preview',
+        notes: 'Gateway transport separates websocket/poll producers from market, signal, risk, execution, and audit workers.'
       }
     });
   } catch (error) {
@@ -276,6 +278,26 @@ router.get('/streaming/status', async (req, res) => {
   } catch (error) {
     logger.error('Native exchange streaming status error:', error);
     res.status(500).json({ success: false, error: 'Failed to load streaming status' });
+  }
+});
+
+router.post('/streaming/route-preview', async (req, res) => {
+  try {
+    const { symbol, quantity } = req.body || {};
+    if (!symbol) {
+      return res.status(400).json({ success: false, error: 'Symbol is required' });
+    }
+
+    res.json({
+      success: true,
+      route: nativeExchangeStreamService.previewRoute({
+        symbol,
+        quantity: Number(quantity) || 0
+      })
+    });
+  } catch (error) {
+    logger.error('Native exchange streaming route preview error:', error);
+    res.status(500).json({ success: false, error: 'Failed to build route preview' });
   }
 });
 

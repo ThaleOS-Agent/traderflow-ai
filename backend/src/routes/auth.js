@@ -2,7 +2,6 @@ import express from 'express';
 import jwt from 'jsonwebtoken';
 import { User } from '../models/User.js';
 import { logger } from '../utils/logger.js';
-import { isFounderUser } from '../utils/founderAccess.js';
 
 const router = express.Router();
 
@@ -107,13 +106,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (isFounderUser(user)) {
-      return res.status(403).json({
-        error: 'Founder accounts must use wallet authentication',
-        code: 'FOUNDER_WALLET_REQUIRED'
-      });
-    }
-    
     // Check password
     const isValid = await user.comparePassword(password);
     if (!isValid) {

@@ -59,6 +59,7 @@ import forexRoutes from './routes/forex.js';
 import mt5Routes from './routes/mt5.js';
 import agentRoutes from './routes/agents.js';
 import auditRoutes from './routes/audit.js';
+import accountConnectionRoutes from './routes/accountConnections.js';
 
 dotenv.config({ path: join(__dirname, '../../.env.local') });
 dotenv.config({ path: join(__dirname, '../../.env'), override: false });
@@ -153,10 +154,10 @@ patternScanner.initialize();
 nativeExchangeStreamService.attach({
   wss,
   tradingEngine,
-  agentOrchestrator
+  agentOrchestrator,
+  advancedRiskManager
 });
 
-const defaultCryptoSymbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
 const defaultUsdSymbols = ['BTCUSD', 'ETHUSD', 'SOLUSD'];
 
 // Initialize Asset Scanner (with default exchange configs)
@@ -175,15 +176,12 @@ nativeExchangeStreamService.initialize({
   subscriptions: [
     { venue: 'binance', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
     { venue: 'coinbase', symbols: defaultUsdSymbols, isTestnet: true },
-    { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false },
-    { venue: 'kucoin', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
-    { venue: 'bybit', symbols: defaultCryptoSymbols, isTestnet: false },
-    { venue: 'bitfinex', symbols: defaultUsdSymbols, isTestnet: false }
+    { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false }
   ]
 }).then(() => {
-  logger.info('Native exchange streaming adapters initialized');
+  logger.info('THAELIA exchange gateway initialized');
 }).catch(err => {
-  logger.error('Failed to initialize native exchange streaming adapters:', err.message);
+  logger.error('Failed to initialize THAELIA exchange gateway:', err.message);
 });
 
 assetScanner.initialize(exchangeConfigs).then(() => {
@@ -251,6 +249,7 @@ app.use('/api/forex', forexRoutes);
 app.use('/api/mt5', mt5Routes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/account-connections', accountConnectionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -268,6 +267,11 @@ app.get('/api/health', (req, res) => {
     notificationService: notificationService.isInitialized ? 'initialized' : 'not_initialized',
     dexIntegration: dexIntegration.isInitialized ? 'initialized' : 'not_initialized',
     advancedRiskManager: 'initialized',
+    accountGatewayFlags: {
+      enablePaperTrading: process.env.ENABLE_PAPER_TRADING !== 'false',
+      enableLiveTrading: process.env.ENABLE_LIVE_TRADING === 'true',
+      demoMode: process.env.DEMO_MODE !== 'false'
+    },
     activePatterns: patternScanner.getActivePatterns?.() || 0,
     trackedAssets: assetScanner.stats?.totalAssets || 0,
     activeOpportunities: assetScanner.getOpportunities?.()?.length || 0,

@@ -95,8 +95,8 @@ async function seed() {
   console.log('    Password: TradeFlow@Demo1');
   console.log('    Tier    : gold');
   console.log('');
-  console.log('  Founder access is no longer seeded.');
-  console.log('  Provision Founder tier through wallet allowlisting and controlled account updates only.');
+  console.log('  Founder access is not seeded in code.');
+  console.log('  Provision Founder credentials directly in MongoDB via backend/src/scripts/provisionFounderAccount.js.');
   console.log('─────────────────────────────────────────\n');
 
   await mongoose.disconnect();

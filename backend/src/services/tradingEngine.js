@@ -5,6 +5,7 @@ import { Signal } from '../models/Signal.js';
 import { Trade } from '../models/Trade.js';
 import { User } from '../models/User.js';
 import { getStrategy } from './strategies/index.js';
+import { rankStrategySignals, buildRecommendationPayload } from './strategySelector.js';
 import { ExchangeConnector } from './exchangeConnector.js';
 import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { RiskManager } from './riskManager.js';
@@ -177,52 +178,53 @@ export class TradingEngine {
 
   // Generate trading signals
   async generateSignals() {
-    logger.info('Generating trading signals with XQ Trade M8 ensemble...');
+    logger.info('Generating trading signals with ranked multi-strategy selection...');
     
     for (const [symbol, data] of this.marketData) {
       try {
         // Apply feature engineering
         const enhancedData = featureEngineering.processAllFeatures(data);
-        
-        // Use XQ Trade M8 ensemble strategy (primary)
-        const strategies = ['xq_trade_m8', 'quantum_ai', 'crypto_bot'];
-        
-        for (const strategyName of strategies) {
-          const strategy = getStrategy(strategyName);
-          const signal = await strategy.generateSignal({
-            symbol,
-            ...enhancedData
-          });
-          
-          if (signal && this.validateSignal(signal)) {
-            // Add feature engineering metadata
-            signal.metadata = {
-              ...signal.metadata,
-              rsi: enhancedData.rsi,
-              macd: enhancedData.macd,
-              marketRegime: enhancedData.marketRegime,
-              volumeProfile: enhancedData.volumeProfile,
-              supportResistance: enhancedData.supportResistance,
-              volatility: enhancedData.volatility
-            };
-            
-            const savedSignal = await this.saveSignal(signal);
-            
-            // Broadcast new signal
-            this.broadcast('newSignal', savedSignal?.toJSON?.() || signal);
-            
-            if (this.agentOrchestrator) {
-              await this.agentOrchestrator.processSignal(savedSignal?.toObject?.() || signal, 'trading_engine');
-            } else {
-              await this.checkAutoTrading(savedSignal?.toObject?.() || signal);
-            }
-            
-            logger.info(`Signal generated: ${symbol} ${signal.side} (${strategyName}, confidence: ${signal.confidenceScore}%)`);
-            
-            // Only use the first successful strategy per symbol
-            break;
+        const ranking = await rankStrategySignals({
+          symbol,
+          ...enhancedData
+        });
+        const recommendation = buildRecommendationPayload(ranking);
+        const topCandidate = ranking.ranked[0];
+        if (!topCandidate) continue;
+
+        const signal = topCandidate.signal;
+        if (!this.validateSignal(signal)) continue;
+
+        signal.metadata = {
+          ...signal.metadata,
+          rsi: enhancedData.rsi,
+          macd: enhancedData.macd,
+          marketRegime: enhancedData.marketRegime,
+          volumeProfile: enhancedData.volumeProfile,
+          supportResistance: enhancedData.supportResistance,
+          volatility: enhancedData.volatility,
+          strategySelection: {
+            ...recommendation,
+            ranked: ranking.ranked.slice(0, 5).map((item) => ({
+              strategy: item.code,
+              score: item.compositeScore,
+              confidenceScore: item.confidenceScore,
+              riskReward: item.riskReward
+            }))
           }
+        };
+        signal.analysis = `${signal.analysis} Decision bot recommendation: ${recommendation.recommendation}`;
+
+        const savedSignal = await this.saveSignal(signal);
+        this.broadcast('newSignal', savedSignal?.toJSON?.() || signal);
+
+        if (this.agentOrchestrator) {
+          await this.agentOrchestrator.processSignal(savedSignal?.toObject?.() || signal, 'trading_engine');
+        } else {
+          await this.checkAutoTrading(savedSignal?.toObject?.() || signal);
         }
+
+        logger.info(`Signal generated: ${symbol} ${signal.side} (${signal.strategy}, composite: ${topCandidate.compositeScore}, confidence: ${signal.confidenceScore}%)`);
       } catch (error) {
         logger.error(`Error generating signal for ${symbol}:`, error);
       }

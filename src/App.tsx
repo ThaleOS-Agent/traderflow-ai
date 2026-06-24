@@ -6,10 +6,21 @@ import { siteConfig } from './config';
 import { Dashboard } from './dashboard';
 import { LoginPage } from './dashboard/LoginPage';
 import { SubscriptionPage } from './dashboard/SubscriptionPage';
+import { AccountConnectionsPage } from './dashboard/AccountConnectionsPage';
 import { api } from './dashboard/api';
 import { MarketingLanding } from './sections/MarketingLanding';
 
-type View = 'landing' | 'login' | 'dashboard' | 'plans';
+type View = 'landing' | 'login' | 'dashboard' | 'plans' | 'account-connections';
+
+function viewFromPath(pathname: string): View {
+  if (pathname === '/connections/accounts') return 'account-connections';
+  return 'landing';
+}
+
+function pathFromView(view: View) {
+  if (view === 'account-connections') return '/connections/accounts';
+  return '/';
+}
 
 function ShellNav({
   brandAction,
@@ -76,7 +87,7 @@ function ShellNav({
 }
 
 function App() {
-  const [currentView, setCurrentView] = useState<View>('landing');
+  const [currentView, setCurrentView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<Record<string, unknown> | null>(null);
@@ -99,11 +110,17 @@ function App() {
         if (!active) return;
         setUser(data.user);
         setIsAuthenticated(true);
+        if (window.location.pathname === '/connections/accounts') {
+          setCurrentView('account-connections');
+        }
       } catch {
         api.logout();
         if (!active) return;
         setUser(null);
         setIsAuthenticated(false);
+        if (window.location.pathname === '/connections/accounts') {
+          setCurrentView('login');
+        }
       } finally {
         if (active) setAuthChecked(true);
       }
@@ -113,17 +130,22 @@ function App() {
     return () => { active = false; };
   }, []);
 
+  const navigate = (view: View) => {
+    setCurrentView(view);
+    window.history.replaceState({}, '', pathFromView(view));
+  };
+
   const handleLogin = (nextUser?: Record<string, unknown>) => {
     setUser(nextUser ?? null);
     setIsAuthenticated(true);
-    setCurrentView('dashboard');
+    navigate(window.location.pathname === '/connections/accounts' ? 'account-connections' : 'dashboard');
   };
 
   const handleLogout = () => {
     api.logout();
     setUser(null);
     setIsAuthenticated(false);
-    setCurrentView('landing');
+    navigate('landing');
   };
 
   const subscriptionTier = typeof user?.subscription === 'object' && user.subscription
@@ -145,16 +167,20 @@ function App() {
     );
   }
 
-  if (currentView === 'dashboard' && isAuthenticated) {
+  if ((currentView === 'dashboard' || currentView === 'account-connections') && isAuthenticated) {
     return (
       <main className="min-h-screen bg-[#07111b]">
         <ShellNav
-          brandAction={() => setCurrentView('landing')}
-          secondaryAction={{ label: 'Plans', onClick: () => setCurrentView('plans') }}
+          brandAction={() => navigate('landing')}
+          secondaryAction={{ label: 'Plans', onClick: () => navigate('plans') }}
           tertiaryAction={{ label: 'Logout', onClick: handleLogout }}
           userLabel={userEmail ? `${userEmail} · ${userTier}` : 'Dashboard'}
         />
-        <Dashboard />
+        {currentView === 'dashboard' ? (
+          <Dashboard />
+        ) : (
+          <AccountConnectionsPage onBack={() => navigate('dashboard')} />
+        )}
       </main>
     );
   }
@@ -163,8 +189,8 @@ function App() {
     return (
       <main className="min-h-screen bg-[#07111b]">
         <ShellNav
-          brandAction={() => setCurrentView('landing')}
-          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Plans', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'plans') }}
+          brandAction={() => navigate('landing')}
+          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Plans', onClick: () => navigate(isAuthenticated ? 'dashboard' : 'plans') }}
         />
         <LoginPage onLogin={handleLogin} />
       </main>
@@ -175,9 +201,9 @@ function App() {
     return (
       <main className="min-h-screen bg-[#07111b]">
         <ShellNav
-          brandAction={() => setCurrentView('landing')}
-          secondaryAction={{ label: 'Sign in', onClick: () => setCurrentView('login') }}
-          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Get started', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'login') }}
+          brandAction={() => navigate('landing')}
+          secondaryAction={{ label: 'Sign in', onClick: () => navigate('login') }}
+          primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Get started', onClick: () => navigate(isAuthenticated ? 'dashboard' : 'login') }}
           userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
         />
         <SubscriptionPage
@@ -185,7 +211,7 @@ function App() {
           isFounder={isAuthenticated && isFounder}
           onUpgrade={(tier) => {
             if (!isAuthenticated) {
-              setCurrentView('login');
+              navigate('login');
               return;
             }
             window.location.href = tier === 'founder'
@@ -200,17 +226,17 @@ function App() {
   return (
     <main className="min-h-screen bg-[#07111b]">
       <ShellNav
-        brandAction={() => setCurrentView('landing')}
-        secondaryAction={{ label: 'Plans', onClick: () => setCurrentView('plans') }}
-        primaryAction={{ label: isAuthenticated ? 'Open dashboard' : 'Sign in', onClick: () => setCurrentView(isAuthenticated ? 'dashboard' : 'login') }}
+        brandAction={() => navigate('landing')}
+        secondaryAction={{ label: 'Plans', onClick: () => navigate('plans') }}
+        primaryAction={{ label: isAuthenticated ? 'Open dashboard' : 'Sign in', onClick: () => navigate(isAuthenticated ? 'dashboard' : 'login') }}
         tertiaryAction={isAuthenticated ? { label: 'Logout', onClick: handleLogout } : undefined}
         userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
       />
 
       <MarketingLanding
-        onPrimaryAction={() => setCurrentView(isAuthenticated ? 'dashboard' : 'login')}
-        onSecondaryAction={() => setCurrentView(isAuthenticated ? 'dashboard' : 'plans')}
-        onPricingAction={() => setCurrentView('plans')}
+        onPrimaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'login')}
+        onSecondaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'plans')}
+        onPricingAction={() => navigate('plans')}
       />
     </main>
   );

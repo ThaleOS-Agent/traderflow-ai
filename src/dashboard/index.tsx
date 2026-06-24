@@ -2,16 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
-  ArrowUpRight, ArrowDownRight, Wifi, WifiOff,
+  ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Settings,
   Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu, Bot, Newspaper,
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveMarketData, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
-import { WalletConnect } from './WalletConnect';
 import { SubscriptionPage } from './SubscriptionPage';
 import { TradingViewChart } from './TradingViewChart';
 import { MT5Panel } from './MT5Panel';
 import { ExchangeConnections } from './ExchangeConnections';
+import { SettingsPage } from './SettingsPage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -334,7 +334,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [view, setView] = useState<'main' | 'subscription'>('main');
+  const [view, setView] = useState<'main' | 'subscription' | 'settings'>('main');
   const [subscription, setSubscription] = useState<{
     tier: string; status: string; isFounder: boolean; features: string[];
   } | null>(null);
@@ -621,6 +621,10 @@ export function Dashboard() {
     );
   }
 
+  if (view === 'settings') {
+    return <SettingsPage onBack={() => setView('main')} />;
+  }
+
   const netPnL = (portfolio?.totalProfit ?? 0) - (portfolio?.totalLoss ?? 0);
   const tier = subscription?.tier ?? 'free';
   const isFounder = subscription?.isFounder ?? false;
@@ -865,6 +869,13 @@ export function Dashboard() {
               : <><span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse" /> Connecting</>
             }
           </div>
+          <button
+            onClick={() => setView('settings')}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </button>
           <button
             onClick={() => setView('subscription')}
             className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm text-gray-400 hover:text-white transition-colors"
@@ -1203,7 +1214,7 @@ export function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: wallet + MT5 + subscription card */}
+        {/* Left column: account controls + MT5 + subscription card */}
         <div className="lg:col-span-1 flex flex-col gap-4">
           {/* Trading mode controls */}
           <div id="trading-mode" className={`border rounded-xl p-5 scroll-mt-24 ${paperTrading ? 'bg-yellow-500/5 border-yellow-500/20' : 'bg-green-500/5 border-green-500/20'}`}>
@@ -1261,8 +1272,17 @@ export function Dashboard() {
             )}
           </div>
 
-          {/* Wallet */}
-          <WalletConnect />
+          <button
+            type="button"
+            onClick={() => setView('settings')}
+            className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-5 text-left transition-colors hover:border-white/20 hover:bg-white/10"
+          >
+            <div>
+              <p className="text-white text-sm font-semibold">Account Settings</p>
+              <p className="mt-1 text-xs text-gray-500">Manage wallet linking, security, exchange keys, and trading preferences.</p>
+            </div>
+            <Settings className="h-4 w-4 text-cyan-300" />
+          </button>
 
           {/* Exchange Connections */}
           <div id="broker-connections" className="scroll-mt-24">

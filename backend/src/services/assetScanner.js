@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import { MultiExchangeConnector } from './exchanges/multiExchange.js';
 import { featureEngineering } from './featureEngineering.js';
 import { getStrategy } from './strategies/index.js';
+import { rankStrategySignals, buildRecommendationPayload } from './strategySelector.js';
 import { harmonicDetector } from './harmonicPatterns.js';
 
 /**
@@ -275,18 +276,21 @@ export class AssetScanner {
    */
   async findOpportunities(marketData) {
     const opportunities = [];
-    
-    // Strategy 1: XQ Trade M8 Ensemble
+
     try {
-      const strategy = getStrategy('xq_trade_m8');
-      const signal = await strategy.generateSignal(marketData);
-      if (signal) {
+      const ranking = await rankStrategySignals(marketData);
+      const recommendation = buildRecommendationPayload(ranking);
+      ranking.ranked.slice(0, 4).forEach((candidate, index) => {
         opportunities.push({
-          ...signal,
-          strategy: 'XQ Trade M8',
-          priority: 1
+          ...candidate.signal,
+          priority: index + 1,
+          metadata: {
+            ...candidate.signal.metadata,
+            strategySelection: recommendation
+          },
+          analysis: `${candidate.signal.analysis} Decision bot recommendation: ${recommendation.recommendation}`
         });
-      }
+      });
     } catch (e) {}
     
     // Strategy 2: Harmonic Patterns
@@ -305,7 +309,7 @@ export class AssetScanner {
             confidence: pattern.confidence >= 90 ? 'very_high' : pattern.confidence >= 80 ? 'high' : 'medium',
             confidenceScore: pattern.confidence,
             strategy: `Harmonic ${pattern.pattern}`,
-            priority: 2,
+            priority: 10,
             analysis: `${pattern.pattern} ${pattern.direction} pattern detected`,
             metadata: { pattern }
           });
@@ -320,7 +324,7 @@ export class AssetScanner {
         opportunities.push({
           ...breakout,
           strategy: 'Breakout',
-          priority: 3
+          priority: 11
         });
       }
     } catch (e) {}
@@ -332,12 +336,12 @@ export class AssetScanner {
         opportunities.push({
           ...volumeSpike,
           strategy: 'Volume Spike',
-          priority: 4
+          priority: 12
         });
       }
     } catch (e) {}
     
-    return opportunities.sort((a, b) => b.confidenceScore - a.confidenceScore);
+    return opportunities.sort((a, b) => b.confidenceScore - a.confidenceScore || a.priority - b.priority);
   }
 
   /**

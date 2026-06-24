@@ -55,7 +55,7 @@ async function rotateFounderSeedAccount() {
   }
 
   console.log(`Normalized founder integrity for ${repaired} user record(s).`);
-  console.log('Founder access remains governed by subscription tier and wallet-auth policy.');
+  console.log('Founder access remains governed by the founder tier on the database account.');
 
   await mongoose.disconnect();
   process.exit(0);

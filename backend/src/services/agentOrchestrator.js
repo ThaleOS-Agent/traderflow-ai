@@ -548,14 +548,26 @@ export class AgentOrchestrator {
   }
 
   normalizeOpportunity(opportunity, source) {
+    const recommendedStrategy = opportunity?.metadata?.strategySelection?.selectedStrategy;
+    const recommendation = opportunity?.metadata?.strategySelection?.recommendation;
     return {
       ...opportunity,
       sourceAgent: source,
       exchange: opportunity.exchange || opportunity.provider || opportunity.buyExchange || 'binance',
       side: opportunity.side || opportunity.action || 'buy',
       confidenceScore: Number(opportunity.confidenceScore || opportunity.confidence || 0),
-      strategy: opportunity.strategy || opportunity.type || source,
-      assetType: opportunity.assetType || 'crypto'
+      strategy: recommendedStrategy || opportunity.strategy || opportunity.type || source,
+      assetType: opportunity.assetType || 'crypto',
+      analysis: recommendation && !String(opportunity.analysis || '').includes('Decision bot recommendation:')
+        ? `${opportunity.analysis || ''} Decision bot recommendation: ${recommendation}`.trim()
+        : opportunity.analysis,
+      metadata: {
+        ...(opportunity.metadata || {}),
+        decisionBot: {
+          recommendedStrategy: recommendedStrategy || opportunity.strategy || opportunity.type || source,
+          recommendation: recommendation || null
+        }
+      }
     };
   }
 

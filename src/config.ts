@@ -55,6 +55,9 @@ export const parallaxGalleryConfig = {
   marqueeTexts: [
     'QUANTUM AI STRATEGY',
     'XQ TRADE M8',
+    'DUAL MOMENTUM',
+    'TURTLE BREAKOUT',
+    'MEAN REVERSION ALPHA',
     'HARMONIC PATTERNS',
     'ENSEMBLE MASTER',
     'ARBITRAGE BOT',
@@ -63,7 +66,7 @@ export const parallaxGalleryConfig = {
   ],
 
   galleryLabel: 'STRATEGY SHOWCASE',
-  galleryTitle: 'Six proven algorithms.',
+  galleryTitle: 'Nine deployable algorithms.',
 
   galleryImages: [
     { id: 'g1', src: '/algo-quantum.jpg',  title: 'Quantum AI',      date: 'Strategy 01' },
@@ -72,6 +75,9 @@ export const parallaxGalleryConfig = {
     { id: 'g4', src: '/algo-metals.jpg',   title: 'Metals Trader',   date: 'Strategy 04' },
     { id: 'g5', src: '/algo-oil.jpg',      title: 'Oil Trader',      date: 'Strategy 05' },
     { id: 'g6', src: '/algo-risk.jpg',     title: 'Risk Manager',    date: 'Strategy 06' },
+    { id: 'g7', src: '/market-charts-2.jpg', title: 'Dual Momentum', date: 'Strategy 07' },
+    { id: 'g8', src: '/market-charts-4.jpg', title: 'Mean Reversion Alpha', date: 'Strategy 08' },
+    { id: 'g9', src: '/market-charts-6.jpg', title: 'Turtle Breakout', date: 'Strategy 09' },
   ],
 
   endCtaText: 'See All Features',

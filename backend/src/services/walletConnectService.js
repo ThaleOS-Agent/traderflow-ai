@@ -3,7 +3,7 @@ import { User } from '../models/User.js';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { Web3 } from 'web3';
-import { founderIntegrityIssues, isFounderUser, normalizeFounderState } from '../utils/founderAccess.js';
+import { isFounderUser } from '../utils/founderAccess.js';
 
 const web3 = new Web3();
 
@@ -97,32 +97,6 @@ export class WalletConnectService {
       }
     };
     
-    // Founder access
-    this.founderWallets = (process.env.FOUNDER_WALLETS || '0x0000000000000000000000000000000000000000')
-      .split(',')
-      .map(address => address.trim().toLowerCase())
-      .filter(Boolean);
-  }
-
-  applyFounderEntitlement(user) {
-    user.subscription = {
-      ...user.subscription,
-      tier: 'founder',
-      status: 'lifetime',
-      startedAt: user.subscription?.startedAt || new Date(),
-      expiresAt: null,
-      paymentMethod: user.subscription?.paymentMethod || 'wallet_allowlist',
-      txHash: user.subscription?.txHash || null
-    };
-
-    normalizeFounderState(user);
-  }
-
-  logFounderIntegrity(user, context) {
-    const issues = founderIntegrityIssues(user);
-    if (issues.length > 0) {
-      logger.warn(`Founder integrity mismatch during ${context} for user ${user?._id || 'unknown'}: ${issues.join(',')}`);
-    }
   }
 
   /**
@@ -180,16 +154,6 @@ export class WalletConnectService {
         
         logger.info(`New user created via wallet: ${normalizedAddress}`);
       }
-      
-      // Check if founder
-      const isFounder = this.founderWallets.includes(normalizedAddress);
-      if (isFounder) {
-        this.applyFounderEntitlement(user);
-        await user.save();
-        logger.info(`Founder login: ${normalizedAddress}`);
-      }
-
-      this.logFounderIntegrity(user, 'wallet_connect');
       
       // Update session
       session.status = 'connected';
@@ -263,13 +227,7 @@ export class WalletConnectService {
       user.chainId = String(chainId || '');
       user.lastLogin = new Date();
 
-      const isFounder = this.founderWallets.includes(normalizedAddress);
-      if (isFounder) {
-        this.applyFounderEntitlement(user);
-      }
-
       await user.save();
-      this.logFounderIntegrity(user, 'wallet_link');
 
       session.status = 'connected';
       session.walletAddress = normalizedAddress;
@@ -385,9 +343,6 @@ export class WalletConnectService {
       }
 
       if (isFounderUser(user)) {
-        this.applyFounderEntitlement(user);
-        await user.save();
-
         return {
           success: true,
           tier: 'founder',

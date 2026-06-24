@@ -268,6 +268,18 @@ export const api = {
     return request<Record<string, unknown>>('/strategies');
   },
 
+  async getAvailableStrategies() {
+    return request<{
+      strategies: Array<{
+        code: string;
+        name: string;
+        description: string;
+        type: string;
+        supportedAssets: string[];
+      }>;
+    }>('/strategies/available');
+  },
+
   async getPortfolio() {
     return request<Record<string, unknown>>('/user/portfolio');
   },
@@ -477,18 +489,100 @@ export const api = {
       success: boolean;
       streaming: {
         supportedVenues: string[];
+        states?: Record<string, string>;
+        queues?: Record<string, { name: string; depth: number; dropped: number }>;
+        workers?: Record<string, { processed: number; failed: number; lastProcessedAt: number | null }>;
         connections: Array<{
           venue: string;
+          exchange?: string;
           isTestnet: boolean;
+          transport?: string;
           status: string;
+          healthScore?: number;
+          healthBand?: string;
           symbols: string[];
           connectedAt: number | null;
           lastMessageAt: number | null;
+          lastPingAt?: number | null;
+          lastPongAt?: number | null;
           lastError: string | null;
+          latencyMs?: number | null;
+          reconnectCount?: number;
           reconnectAttempts: number;
+          lastDisconnectReason?: string | null;
+          lastReconnectTime?: number | null;
+          missedPings?: number;
+          sequenceGaps?: number;
+          messageRate?: number;
+          warnings?: string[];
+          recommendations?: string[];
+          recoveryActions?: string[];
         }>;
+        warnings?: string[];
+        recommendations?: string[];
+        recoveryActions?: string[];
+        recentAudit?: Record<string, unknown>[];
       };
     }>('/exchange/streaming/status');
+  },
+
+  async getExchangeRoutePreview(symbol: string, quantity = 0) {
+    return request<{
+      success: boolean;
+      route: {
+        symbol: string;
+        evaluatedAt: string;
+        candidates: Array<{
+          exchange: string;
+          status: string;
+          healthScore: number;
+          latencyMs: number | null;
+          reconnectCount: number;
+          spread: number | null;
+          feeBps: number;
+          slippageBps: number | null;
+          routeConfidenceScore: number;
+        }>;
+        selectedRoute: Record<string, unknown> | null;
+      };
+    }>('/exchange/streaming/route-preview', {
+      method: 'POST',
+      body: JSON.stringify({ symbol, quantity }),
+    });
+  },
+
+  async getAccountConnectionsMonitor() {
+    return request<{
+      success: boolean;
+      monitor: Record<string, unknown>;
+    }>('/account-connections/monitor');
+  },
+
+  async getAccountConnectionDefaults(exchange: string) {
+    return request<{
+      success: boolean;
+      config: Record<string, unknown>;
+    }>(`/account-connections/defaults/${encodeURIComponent(exchange)}`);
+  },
+
+  async saveAccountConnection(payload: Record<string, unknown>) {
+    return request<{
+      success: boolean;
+      connection: Record<string, unknown>;
+    }>('/account-connections', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async toggleAccountConnectionLive(id: string, enabled: boolean) {
+    return request<{
+      success: boolean;
+      connection: Record<string, unknown>;
+    }>(`/account-connections/${encodeURIComponent(id)}/toggle-live`, {
+      method: 'POST',
+      body: JSON.stringify({ enabled }),
+    });
   },
 
   async getExchangeConnection(id: string) {

@@ -168,7 +168,9 @@ export class AutoExecutionEngine {
     }
 
     const strategyName = normalizeStrategyName(opportunity.strategy);
-    if (!config.strategies.includes(strategyName) && !config.strategies.includes('all')) {
+    const recommendedStrategy = normalizeStrategyName(opportunity?.metadata?.strategySelection?.selectedStrategy || strategyName);
+    const effectiveStrategyName = recommendedStrategy || strategyName;
+    if (!config.strategies.includes(effectiveStrategyName) && !config.strategies.includes('all')) {
       return { executable: false, reason: 'Strategy not enabled for user' };
     }
 
@@ -223,7 +225,7 @@ export class AutoExecutionEngine {
       openPositions,
       quantity: positionSize,
       exchangeName,
-      strategyName,
+      strategyName: effectiveStrategyName,
       isPaperTrade
     };
   }

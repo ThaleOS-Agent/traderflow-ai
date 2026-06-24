@@ -47,6 +47,14 @@ The WebSocket transport layer never executes strategy logic directly in `onmessa
 cd services/websocket-gateway
 npm install
 npm run check
+
+## Bybit notes
+
+- Private stream uses `/v5/private`.
+- Order entry uses `/v5/trade`.
+- Public streams are split by market family: `spot`, `linear`, `inverse`, `option`.
+- Region-specific mainnet domains are supported via `BYBIT_REGION` (`global`, `tr`, `kz`, `georgia`).
+- Private connections can append `BYBIT_MAX_ACTIVE_TIME`, for example `1m`.
 ```
 
 ## Main exports
@@ -61,4 +69,3 @@ npm run check
 - `OrderRouter`
 - `SmartRouter`
 - `PreTradeChecks`
-

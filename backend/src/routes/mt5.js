@@ -258,21 +258,23 @@ router.post('/order', async (req, res) => {
     if (typeof volume !== 'number' || volume <= 0) {
       return res.status(400).json({ success: false, error: 'volume must be a positive number' });
     }
-    if (!hasUserMetatraderAccount(req.user)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Live MT4/MT5 execution requires a saved MT4/MT5 connection'
+    const result = hasUserMetatraderAccount(req.user)
+      ? await metatraderAccountService.placeOrder(req.user, accountId, {
+        symbol,
+        side,
+        volume,
+        stopLoss,
+        takeProfit,
+        comment
+      })
+      : await mt5Connector.placeOrder({
+        symbol,
+        side,
+        volume,
+        stopLoss,
+        takeProfit,
+        comment
       });
-    }
-
-    const result = await metatraderAccountService.placeOrder(req.user, accountId, {
-      symbol,
-      side,
-      volume,
-      stopLoss,
-      takeProfit,
-      comment
-    });
     res.json({ success: true, result });
   } catch (err) {
     logger.error('MT5 place order error:', err);
@@ -287,14 +289,10 @@ router.delete('/positions/:id', async (req, res) => {
     if (!/^\d+$/.test(positionId)) {
       return res.status(400).json({ success: false, error: 'Invalid position id' });
     }
-    if (!hasUserMetatraderAccount(req.user)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Live MT4/MT5 close requires a saved MT4/MT5 connection'
-      });
-    }
 
-    const result = await metatraderAccountService.closePosition(req.user, req.query.accountId, positionId);
+    const result = hasUserMetatraderAccount(req.user)
+      ? await metatraderAccountService.closePosition(req.user, req.query.accountId, positionId)
+      : await mt5Connector.closePosition(positionId);
     res.json({ success: true, result });
   } catch (err) {
     logger.error('MT5 close position error:', err);

@@ -9,13 +9,37 @@ function hasActiveOandaConnection(user) {
   return (user?.exchanges || []).some(exchange => exchange.name === 'oanda' && exchange.isActive);
 }
 
-function requireActiveOandaConnection(req, res) {
-  if (hasActiveOandaConnection(req.user)) return true;
-  res.status(400).json({
-    success: false,
-    error: 'Live OANDA execution requires a saved active OANDA connection'
-  });
-  return false;
+function getActiveOandaCredentials(user) {
+  const exchanges = user?.getDecryptedExchanges?.() || [];
+  const active = exchanges.find(exchange => exchange.name === 'oanda' && exchange.isActive);
+  if (!active?.apiKey) return null;
+
+  return {
+    apiKey: active.apiKey,
+    accountId: active.passphrase || active.accountId || '',
+    isPractice: active.isTestnet !== false
+  };
+}
+
+async function ensureOandaConnection(req) {
+  const saved = getActiveOandaCredentials(req.user);
+  if (saved?.apiKey && saved?.accountId) {
+    await oandaForexService.initialize(saved.apiKey, saved.accountId, saved.isPractice);
+    return 'saved_connection';
+  }
+
+  const envApiKey = process.env.OANDA_API_KEY;
+  const envAccountId = process.env.OANDA_ACCOUNT_ID;
+  if (envApiKey && envAccountId) {
+    await oandaForexService.initialize(
+      envApiKey,
+      envAccountId,
+      String(process.env.OANDA_ENVIRONMENT || 'practice').toLowerCase() !== 'live'
+    );
+    return 'platform_fallback';
+  }
+
+  throw new Error('Live OANDA execution requires a saved active OANDA connection or platform OANDA credentials');
 }
 
 /**
@@ -250,7 +274,7 @@ router.get('/positionbook/:instrument', authenticate, requireTier('platinum'), a
 router.post('/order/market', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units, stopLoss, takeProfit, trailingStop } = req.body;
-    if (!requireActiveOandaConnection(req, res)) return;
+    await ensureOandaConnection(req);
     
     if (!instrument || !units) {
       return res.status(400).json({
@@ -287,7 +311,7 @@ router.post('/order/market', authenticate, requireTier('platinum'), async (req, 
 router.post('/order/limit', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units, price, stopLoss, takeProfit } = req.body;
-    if (!requireActiveOandaConnection(req, res)) return;
+    await ensureOandaConnection(req);
     
     if (!instrument || !units || !price) {
       return res.status(400).json({
@@ -324,7 +348,7 @@ router.post('/order/limit', authenticate, requireTier('platinum'), async (req, r
 router.post('/position/close', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { instrument, units } = req.body;
-    if (!requireActiveOandaConnection(req, res)) return;
+    await ensureOandaConnection(req);
     
     if (!instrument) {
       return res.status(400).json({
@@ -402,7 +426,7 @@ router.get('/orders/pending', authenticate, requireTier('platinum'), async (req,
 router.post('/order/cancel', authenticate, requireTier('platinum'), async (req, res) => {
   try {
     const { orderId } = req.body;
-    if (!requireActiveOandaConnection(req, res)) return;
+    await ensureOandaConnection(req);
     
     if (!orderId) {
       return res.status(400).json({

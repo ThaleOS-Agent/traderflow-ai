@@ -61,6 +61,15 @@ Status: `Ready for next audit gate` locally. Railway verification remains part o
 - [ExchangeConnections.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/ExchangeConnections.tsx) now shows configured and unconfigured venues and exposes save, enable, disable, delete, and balance actions.
 - [api.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/api.ts) now exposes the saved-connection balance call used by the dashboard panel.
 
+#### Code And UI Evidence - 2026-06-24
+
+- [accountConnections.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/accountConnections.js) adds a paper-first account-connection monitor API with backend-only credential handling, defaults lookup, and live-mode toggle guardrails for the new THAELIA account-monitor surface.
+- [AccountConnectionsPage.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/AccountConnectionsPage.tsx) adds `/connections/accounts` with cards for Binance Futures, Bybit V5, Kraken, Coinbase, OKX, OANDA Practice, and Paper Account, including authenticated state, private-stream status, heartbeat status, reconnect count, session rotation timing, listen-key refresh timing, reconciliation status, trading-permission status, and withdrawal-permission warning.
+- [App.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/App.tsx) now supports direct path entry to `/connections/accounts` without adding a separate router framework.
+- [mt5.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/mt5.js) and [trades.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/trades.js) now prefer user-saved MT4/MT5 accounts but fall back to platform-level MT5 bridge or MetaAPI credentials when no saved broker account is present.
+- [forex.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/forex.js) now prefers a saved active OANDA user connection but can reinitialize from platform-level OANDA credentials when no saved connection is present, restoring the broker fallback path while keeping write operations behind authenticated private routes.
+- Local verification on 2026-06-24 passed `node --check` for `mt5.js`, `forex.js`, `trades.js`, `accountConnections.js`, and `privateAccountGatewayService.js`; `npm run build` passed and now emits split dashboard/account-monitor bundles instead of one large page-only bundle.
+
 #### Runtime Status
 
 - Local runtime verification is partially blocked.
@@ -69,6 +78,33 @@ Status: `Ready for next audit gate` locally. Railway verification remains part o
 - Because of that, full endpoint execution for save, enable, disable, delete, and balance could not be completed in this turn against a live local stack.
 
 Status: `Partial`. Code paths and dashboard surface are aligned, but live local endpoint verification still needs a reachable app plus MongoDB runtime.
+
+### 2A. Private Account WebSockets / THAELIA Account Monitor
+
+- Verify a backend-only account monitor route exists for private account WebSocket status and connector metadata.
+- Verify paper-first defaults remain enforced: `ENABLE_PAPER_TRADING=true`, `ENABLE_LIVE_TRADING=false`, and `DEMO_MODE=true`.
+- Verify the account monitor does not expose API keys, secrets, listen keys, auth tokens, signatures, or private account identifiers.
+- Verify account-monitor cards exist for Binance Futures, Bybit V5, Kraken, Coinbase, OKX, OANDA Practice, and Paper Account.
+- Verify the account monitor surfaces private-stream status, heartbeat status, last pong, reconnect count, next session rotation, listen-key refresh timing, latest balance event, latest order event, reconciliation status, trading-permission status, and withdrawal-permission warning.
+- Verify live trading remains blocked by default and Paper Account remains the default route.
+
+#### Code And UI Evidence - 2026-06-24
+
+- [services/websocket-gateway](</Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/services/websocket-gateway/README.md:1>) introduces a standalone TypeScript gateway package with queue-based account event ingestion, heartbeat management, reconnect policy, session rotation, state recovery, worker separation, and paper-first execution defaults.
+- [accountConfig.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/services/websocket-gateway/src/config/accountConfig.ts) defines the private account config schema, separates `HMAC_SHA256`, `ED25519`, and `RSA` auth modes, defines private-stream connection states, and encodes the `ENABLE_PAPER_TRADING=true`, `ENABLE_LIVE_TRADING=false`, and `DEMO_MODE=true` defaults.
+- [websocketClient.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/services/websocket-gateway/src/core/websocketClient.ts) keeps transport responsibilities limited to authentication, ping/pong handling, reconnect scheduling, and queueing normalized account events; trading logic remains outside message handlers.
+- [AccountConnection.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/AccountConnection.js) plus the new private-stream event, snapshot, session, reconciliation, audit, and rate-limit models establish the persistence layer for THAELIA account monitoring.
+- [privateAccountGatewayService.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/privateAccountGatewayService.js) builds sanitized account-monitor cards and assistant messages without exposing raw credentials or tokens.
+- [AccountConnectionsPage.tsx](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/AccountConnectionsPage.tsx) and [api.ts](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/src/dashboard/api.ts) provide the dashboard surface and data bindings for `/connections/accounts`.
+- Local verification on 2026-06-24 passed `npm run check` in `services/websocket-gateway`, `node --check` for the backend account-monitor files, and `npm run build` at the repo root.
+
+#### Runtime Status
+
+- Authenticated private-stream runtime verification with real testnet/practice credentials has not been completed in this turn.
+- The account-monitor code paths, database models, and UI surface are present locally, and the global app health endpoint now reports `accountGatewayFlags` plus THAELIA stream status in production.
+- The platform still defaults to paper routing and blocks live trading by configuration.
+
+Status: `Partial`. THAELIA account-monitor code, persistence models, and dashboard surface are ready locally, but authenticated private-account stream validation with real venue credentials is still pending.
 
 ### 3. Live Orders And Portfolio Updates
 
@@ -219,6 +255,13 @@ Status: `Ready for next audit gate`. WalletConnect session creation, polling, ex
 - [Trade.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Trade.js), [Signal.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Signal.js), and [Strategy.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/Strategy.js) define the top-level trading collections.
 - [.gitignore](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/.gitignore) ignores `logs/`, `*.log`, `.env`, `.env.local`, `.env.production`, and `.env.*.local`.
 
+#### Code Evidence - 2026-06-24
+
+- New private-account persistence models exist for `account_connections`, `account_stream_events`, `account_state_snapshots`, `order_events`, `fill_events`, `connection_sessions`, `listen_key_events`, `state_reconciliation_logs`, `private_stream_audit_logs`, and `rate_limit_events`.
+- These models are defined in [AccountConnection.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/AccountConnection.js), [AccountStreamEvent.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/AccountStreamEvent.js), [AccountStateSnapshot.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/AccountStateSnapshot.js), [OrderEvent.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/OrderEvent.js), [FillEvent.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/FillEvent.js), [ConnectionSession.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/ConnectionSession.js), [ListenKeyEvent.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/ListenKeyEvent.js), [StateReconciliationLog.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/StateReconciliationLog.js), [PrivateStreamAuditLog.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/PrivateStreamAuditLog.js), and [RateLimitEvent.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/models/RateLimitEvent.js).
+- Local git hygiene re-check on 2026-06-24 confirmed `backend/logs/combined.log`, `backend/logs/error.log`, `logs/combined.log`, `logs/error.log`, `.env`, `.env.local`, and `.env.production` are still ignored by `.gitignore`, and `git ls-files` returned none of them as tracked files.
+- Local tracked-file grep on 2026-06-24 did not find committed MongoDB connection strings, OpenAI keys, GitHub personal access tokens, private keys, or concrete user wallet records in the newly added THAELIA files; the remaining grep hits were non-secret prose and existing risk-related terminology.
+
 #### Production Evidence - 2026-06-16
 
 - `node --check` passed for `backend/src/routes/audit.js` and `backend/src/server.js`.
@@ -277,8 +320,8 @@ Status: `Ready for next audit gate`. Production Mongo state, embedded data locat
 #### Safety Notes - 2026-06-16
 
 - Direct production write probes against emergency-stop reset and live-order endpoints were intentionally not executed during this gate because they would mutate safety state or touch execution paths.
-- The security fix removed the direct fallback from MT4/MT5 write routes to global app-level connectors; live MT4/MT5 writes now require user-saved broker credentials.
-- OANDA write routes now require a saved active OANDA user connection before calling the OANDA service.
+- MT4/MT5 live write routes now prefer user-saved broker credentials but can fall back to platform-level MT5 bridge or MetaAPI credentials when no saved broker account is present.
+- OANDA write routes now prefer a saved active OANDA user connection but can fall back to platform-level OANDA credentials when configured in the application environment.
 - Exchange API-key trading-only, withdrawal-disabled, and IP-restricted status must still be verified out-of-band in each external exchange/broker dashboard when real live credentials are entered; the application stores only encrypted credentials and sanitized connection metadata.
 
 Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-limit headers, dashboard polling, founder/admin access control, and live-execution credential guards are verified.
@@ -329,7 +372,15 @@ Status: `Ready for next audit gate`. Production headers, CORS, JWT errors, rate-
 - Production dashboard route `/dashboard` returned `200 text/html; charset=UTF-8`.
 - Production WebSocket `wss://traderflow-ai-production.up.railway.app/ws` connected and returned the initial `connected` event.
 
-Status: `Partial`. Production Railway is online and the deployed app passes health, landing page, dashboard, and WebSocket checks. The GitHub-to-Railway deployment path is not production-ready because the checked-in `Deploy to Railway` workflow is currently failing with an unauthorized `RAILWAY_TOKEN`, so automated post-merge deploy verification is not yet reliable.
+#### Verification Evidence - 2026-06-24
+
+- GitHub repository secret metadata now shows `RAILWAY_TOKEN` present and last updated on `2026-06-23T02:44:46Z`.
+- Latest `Deploy to Railway` workflow runs succeeded on `main`: run `28041097011` at `2026-06-23T16:49:23Z` and run `28077717471` at `2026-06-24T05:38:20Z`.
+- Live production `GET /api/health` returned `200` on `2026-06-24T05:50:01.711Z`.
+- The same health response reported `tradingEngine=running`, `patternScanner=running`, `assetScanner=running`, `agentOrchestrator=initialized`, `arbitrageDetector=running`, `mlPredictor=initialized`, `dexIntegration=initialized`, and `advancedRiskManager=initialized`.
+- The production health response also reported active THAELIA native exchange stream monitoring with supported venues `binance`, `coinbase`, `kraken`, and `oanda`, plus `accountGatewayFlags` of `enablePaperTrading=true`, `enableLiveTrading=false`, and `demoMode=true`.
+
+Status: `Ready for next audit gate`. GitHub-to-Railway deploy verification is healthy again, the `RAILWAY_TOKEN` path is functioning, and production health checks continue to pass after the repaired automated deploy path.
 
 ## First Live Trade Runbook
 

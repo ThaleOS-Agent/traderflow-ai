@@ -175,6 +175,7 @@ const exchangeConfigs = [
 nativeExchangeStreamService.initialize({
   subscriptions: [
     { venue: 'binance', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
+    { venue: 'bybit', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
     { venue: 'coinbase', symbols: defaultUsdSymbols, isTestnet: true },
     { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false }
   ]

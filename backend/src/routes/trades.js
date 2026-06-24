@@ -6,6 +6,7 @@ import { authenticateToken } from './auth.js';
 import { tradingEngine } from '../server.js';
 import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { metatraderAccountService } from '../services/metatraderAccountService.js';
+import { mt5Connector } from '../services/mt5Connector.js';
 import { recalculatePortfolio, toObjectId } from '../utils/portfolio.js';
 import { isSupportedTradingVenue, normalizeTradingVenue } from '../config/tradingVenues.js';
 
@@ -168,17 +169,23 @@ router.post('/', authenticateToken, async (req, res) => {
 
     if (!paperTrade) {
       if (brokerAsset(assetType)) {
-        if (!(user.metatraderAccounts || []).length) {
-          return res.status(400).json({ error: 'Live forex/commodity execution requires a saved MT4/MT5 connection' });
-        }
-        execution = await metatraderAccountService.placeOrder(user, req.body.metatraderAccountId, {
-          symbol,
-          side: side.toUpperCase(),
-          volume: quantity,
-          stopLoss,
-          takeProfit,
-          comment: 'TradeFlow manual trade'
-        });
+        execution = (user.metatraderAccounts || []).length
+          ? await metatraderAccountService.placeOrder(user, req.body.metatraderAccountId, {
+            symbol,
+            side: side.toUpperCase(),
+            volume: quantity,
+            stopLoss,
+            takeProfit,
+            comment: 'TradeFlow manual trade'
+          })
+          : await mt5Connector.placeOrder({
+            symbol,
+            side: side.toUpperCase(),
+            volume: quantity,
+            stopLoss,
+            takeProfit,
+            comment: 'TradeFlow manual trade'
+          });
       } else {
         const exchange = activeExchange(user, exchangeName);
         if (!exchange) {
@@ -271,7 +278,9 @@ router.post('/:id/close', authenticateToken, async (req, res) => {
         if (!trade.exchangeOrderId) {
           return res.status(400).json({ error: 'Cannot close MT4/MT5 trade without broker position ID' });
         }
-        closeExecution = await metatraderAccountService.closePosition(user, req.body.metatraderAccountId, trade.exchangeOrderId);
+        closeExecution = (user.metatraderAccounts || []).length
+          ? await metatraderAccountService.closePosition(user, req.body.metatraderAccountId, trade.exchangeOrderId)
+          : await mt5Connector.closePosition(trade.exchangeOrderId);
       } else {
         const exchange = activeExchange(user, trade.exchange);
         if (!exchange) {

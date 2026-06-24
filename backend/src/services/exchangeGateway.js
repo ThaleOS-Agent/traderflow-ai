@@ -10,7 +10,7 @@ const CONNECTION_STATES = {
   RECONNECTING: 'RECONNECTING'
 };
 
-const SUPPORTED_GATEWAY_VENUES = ['binance', 'coinbase', 'kraken', 'oanda'];
+const SUPPORTED_GATEWAY_VENUES = ['binance', 'bybit', 'coinbase', 'kraken', 'oanda'];
 const SUPPORTED_NATIVE_WS_VENUES = new Set(SUPPORTED_GATEWAY_VENUES);
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 32000, 60000];
 const HEARTBEAT_INTERVAL_MS = 15000;
@@ -84,6 +84,7 @@ function formatVenueSymbol(symbol, venue) {
 
   switch (venue) {
     case 'binance':
+    case 'bybit':
       return compact;
     case 'coinbase':
       return `${base}-${quote}`;
@@ -92,6 +93,15 @@ function formatVenueSymbol(symbol, venue) {
     default:
       return compact;
   }
+}
+
+function inferBybitPublicChannel(symbol) {
+  const upper = String(symbol || '').trim().toUpperCase();
+  if (!upper) return 'linear';
+  if (upper.includes('-C') || upper.includes('-P')) return 'option';
+  if (upper.endsWith('USD') && !upper.endsWith('USDT') && !upper.endsWith('USDC')) return 'inverse';
+  if (upper.endsWith('USDT') || upper.endsWith('USDC')) return 'linear';
+  return 'spot';
 }
 
 function parseRawMessage(raw) {
@@ -309,6 +319,88 @@ const gatewayAdapters = {
           asks: toArray(payload.a),
           timestamp: payload.E || Date.now(),
           raw: payload
+        };
+      }
+
+      return null;
+    }
+  },
+  bybit: {
+    transport: 'websocket',
+    getUrl(state) {
+      const channel = inferBybitPublicChannel([...state.symbols][0]);
+      const host = state.isTestnet ? 'stream-testnet.bybit.com' : 'stream.bybit.com';
+      return `wss://${host}/v5/public/${channel}`;
+    },
+    buildSubscriptions(state) {
+      const args = [];
+      for (const symbol of state.symbols) {
+        const formatted = formatVenueSymbol(symbol, 'bybit');
+        args.push(`tickers.${formatted}`);
+        args.push(`publicTrade.${formatted}`);
+        args.push(`orderbook.1.${formatted}`);
+      }
+
+      return [{ op: 'subscribe', args, req_id: `sub-${Date.now()}` }];
+    },
+    buildPingMessage() {
+      return { op: 'ping', req_id: `ping-${Date.now()}` };
+    },
+    isPongMessage(message) {
+      return message?.op === 'pong'
+        || (message?.op === 'ping' && message?.ret_msg === 'pong')
+        || message?.retMsg === 'pong';
+    },
+    parseMessage(raw) {
+      const message = parseRawMessage(raw);
+
+      if (message?.op === 'pong' || (message?.op === 'ping' && message?.ret_msg === 'pong')) {
+        return { control: 'pong' };
+      }
+
+      if (!message?.topic) return null;
+
+      if (String(message.topic).startsWith('tickers.')) {
+        const item = message.data || {};
+        return {
+          channel: 'ticker',
+          symbol: normalizeSymbol(item.symbol ?? String(message.topic).split('.').pop()),
+          bid: normalizeNumber(item.bid1Price ?? item.bidPrice),
+          ask: normalizeNumber(item.ask1Price ?? item.askPrice),
+          last: normalizeNumber(item.lastPrice),
+          volume: normalizeNumber(item.volume24h),
+          sequence: normalizeNumber(message.cs),
+          timestamp: normalizeNumber(message.ts) || Date.now(),
+          raw: message
+        };
+      }
+
+      if (String(message.topic).startsWith('publicTrade.')) {
+        const trades = toArray(message.data);
+        if (!trades.length) return null;
+        const item = trades[trades.length - 1];
+        return {
+          channel: 'trade',
+          symbol: normalizeSymbol(item.s),
+          last: normalizeNumber(item.p),
+          volume: normalizeNumber(item.v),
+          sequence: normalizeNumber(item.seq ?? message.cs),
+          side: item.S === 'Sell' ? 'sell' : item.S === 'Buy' ? 'buy' : null,
+          timestamp: normalizeNumber(item.T) || normalizeNumber(message.ts) || Date.now(),
+          raw: message
+        };
+      }
+
+      if (String(message.topic).startsWith('orderbook.')) {
+        const item = message.data || {};
+        return {
+          channel: message.type === 'snapshot' ? 'orderbook_snapshot' : 'orderbook',
+          symbol: normalizeSymbol(item.s ?? String(message.topic).split('.').pop()),
+          sequence: normalizeNumber(item.seq ?? item.u ?? message.cs),
+          bids: toArray(item.b),
+          asks: toArray(item.a),
+          timestamp: normalizeNumber(message.ts ?? message.cts) || Date.now(),
+          raw: message
         };
       }
 

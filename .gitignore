@@ -40,3 +40,7 @@ coverage/
 actions-runner/
 my-app@0.0.0
 tsc
+
+# Playwright MCP generated artifacts
+.playwright-mcp/page-*.yml
+.playwright-mcp/console-*.log

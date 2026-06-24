@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import {
   TrendingUp, Activity, DollarSign,
   BarChart2, Zap, RefreshCw, AlertCircle, CheckCircle,
@@ -7,11 +7,31 @@ import {
 } from 'lucide-react';
 import { api } from './api';
 import { useTradeWebSocket, type LiveMarketData, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
-import { SubscriptionPage } from './SubscriptionPage';
-import { TradingViewChart } from './TradingViewChart';
-import { MT5Panel } from './MT5Panel';
-import { ExchangeConnections } from './ExchangeConnections';
-import { SettingsPage } from './SettingsPage';
+
+const SubscriptionPage = lazy(async () => {
+  const module = await import('./SubscriptionPage');
+  return { default: module.SubscriptionPage };
+});
+
+const TradingViewChart = lazy(async () => {
+  const module = await import('./TradingViewChart');
+  return { default: module.TradingViewChart };
+});
+
+const MT5Panel = lazy(async () => {
+  const module = await import('./MT5Panel');
+  return { default: module.MT5Panel };
+});
+
+const ExchangeConnections = lazy(async () => {
+  const module = await import('./ExchangeConnections');
+  return { default: module.ExchangeConnections };
+});
+
+const SettingsPage = lazy(async () => {
+  const module = await import('./SettingsPage');
+  return { default: module.SettingsPage };
+});
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -208,6 +228,14 @@ interface AgentEvent {
 
 function fmt(n: number, decimals = 2) {
   return n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function PanelLoader({ label = 'Loading panel…' }: { label?: string }) {
+  return (
+    <div className="flex min-h-[12rem] items-center justify-center rounded-xl border border-white/10 bg-white/5">
+      <p className="text-sm text-gray-500">{label}</p>
+    </div>
+  );
 }
 
 function fmtUsd(n: number) {
@@ -605,24 +633,30 @@ export function Dashboard() {
             ← Back to Dashboard
           </button>
         </div>
-        <SubscriptionPage
-          currentTier={subscription?.tier ?? 'free'}
-          isFounder={subscription?.isFounder ?? false}
-          onUpgrade={(tier) => {
-            // Direct to founder contact for now; payment integration is a future milestone
-            if (tier === 'founder') {
-              window.location.href = 'mailto:founder@tradeflow.ai?subject=Founder Access Request';
-            } else {
-              window.location.href = `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
-            }
-          }}
-        />
+        <Suspense fallback={<PanelLoader label="Loading subscription…" />}>
+          <SubscriptionPage
+            currentTier={subscription?.tier ?? 'free'}
+            isFounder={subscription?.isFounder ?? false}
+            onUpgrade={(tier) => {
+              // Direct to founder contact for now; payment integration is a future milestone
+              if (tier === 'founder') {
+                window.location.href = 'mailto:founder@tradeflow.ai?subject=Founder Access Request';
+              } else {
+                window.location.href = `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
+              }
+            }}
+          />
+        </Suspense>
       </div>
     );
   }
 
   if (view === 'settings') {
-    return <SettingsPage onBack={() => setView('main')} />;
+    return (
+      <Suspense fallback={<PanelLoader label="Loading settings…" />}>
+        <SettingsPage onBack={() => setView('main')} />
+      </Suspense>
+    );
   }
 
   const netPnL = (portfolio?.totalProfit ?? 0) - (portfolio?.totalLoss ?? 0);
@@ -933,7 +967,9 @@ export function Dashboard() {
 
       {/* Live Chart — full width */}
       <div className="mb-6">
-        <TradingViewChart />
+        <Suspense fallback={<PanelLoader label="Loading chart…" />}>
+          <TradingViewChart />
+        </Suspense>
       </div>
 
       <div id="agent-grid" className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-6 mb-6 scroll-mt-24">
@@ -1286,12 +1322,16 @@ export function Dashboard() {
 
           {/* Exchange Connections */}
           <div id="broker-connections" className="scroll-mt-24">
-            <ExchangeConnections />
+            <Suspense fallback={<PanelLoader label="Loading exchange connections…" />}>
+              <ExchangeConnections />
+            </Suspense>
           </div>
 
           {/* MT5 Panel */}
           <div className="scroll-mt-24">
-            <MT5Panel />
+            <Suspense fallback={<PanelLoader label="Loading MT5 panel…" />}>
+              <MT5Panel />
+            </Suspense>
           </div>
 
           {/* Subscription card */}

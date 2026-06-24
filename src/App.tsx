@@ -1,14 +1,34 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { ArrowRight, Menu, User2 } from 'lucide-react';
 import './index.css';
 import useLenis from './hooks/useLenis';
 import { siteConfig } from './config';
-import { Dashboard } from './dashboard';
-import { LoginPage } from './dashboard/LoginPage';
-import { SubscriptionPage } from './dashboard/SubscriptionPage';
-import { AccountConnectionsPage } from './dashboard/AccountConnectionsPage';
 import { api } from './dashboard/api';
-import { MarketingLanding } from './sections/MarketingLanding';
+
+const Dashboard = lazy(async () => {
+  const module = await import('./dashboard');
+  return { default: module.Dashboard };
+});
+
+const LoginPage = lazy(async () => {
+  const module = await import('./dashboard/LoginPage');
+  return { default: module.LoginPage };
+});
+
+const SubscriptionPage = lazy(async () => {
+  const module = await import('./dashboard/SubscriptionPage');
+  return { default: module.SubscriptionPage };
+});
+
+const AccountConnectionsPage = lazy(async () => {
+  const module = await import('./dashboard/AccountConnectionsPage');
+  return { default: module.AccountConnectionsPage };
+});
+
+const MarketingLanding = lazy(async () => {
+  const module = await import('./sections/MarketingLanding');
+  return { default: module.MarketingLanding };
+});
 
 type View = 'landing' | 'login' | 'dashboard' | 'plans' | 'account-connections';
 
@@ -83,6 +103,17 @@ function ShellNav({
         </div>
       </div>
     </nav>
+  );
+}
+
+function ViewLoader() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center">
+      <div className="text-center">
+        <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-cyan-300/40 border-t-cyan-300" />
+        <p className="text-sm text-slate-400">Loading view…</p>
+      </div>
+    </div>
   );
 }
 
@@ -176,11 +207,13 @@ function App() {
           tertiaryAction={{ label: 'Logout', onClick: handleLogout }}
           userLabel={userEmail ? `${userEmail} · ${userTier}` : 'Dashboard'}
         />
-        {currentView === 'dashboard' ? (
-          <Dashboard />
-        ) : (
-          <AccountConnectionsPage onBack={() => navigate('dashboard')} />
-        )}
+        <Suspense fallback={<ViewLoader />}>
+          {currentView === 'dashboard' ? (
+            <Dashboard />
+          ) : (
+            <AccountConnectionsPage onBack={() => navigate('dashboard')} />
+          )}
+        </Suspense>
       </main>
     );
   }
@@ -192,7 +225,9 @@ function App() {
           brandAction={() => navigate('landing')}
           primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Plans', onClick: () => navigate(isAuthenticated ? 'dashboard' : 'plans') }}
         />
-        <LoginPage onLogin={handleLogin} />
+        <Suspense fallback={<ViewLoader />}>
+          <LoginPage onLogin={handleLogin} />
+        </Suspense>
       </main>
     );
   }
@@ -206,19 +241,21 @@ function App() {
           primaryAction={{ label: isAuthenticated ? 'Dashboard' : 'Get started', onClick: () => navigate(isAuthenticated ? 'dashboard' : 'login') }}
           userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
         />
-        <SubscriptionPage
-          currentTier={isAuthenticated ? userTier : 'free'}
-          isFounder={isAuthenticated && isFounder}
-          onUpgrade={(tier) => {
-            if (!isAuthenticated) {
-              navigate('login');
-              return;
-            }
-            window.location.href = tier === 'founder'
-              ? 'mailto:founder@tradeflow.ai?subject=Founder Access Request'
-              : `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
-          }}
-        />
+        <Suspense fallback={<ViewLoader />}>
+          <SubscriptionPage
+            currentTier={isAuthenticated ? userTier : 'free'}
+            isFounder={isAuthenticated && isFounder}
+            onUpgrade={(tier) => {
+              if (!isAuthenticated) {
+                navigate('login');
+                return;
+              }
+              window.location.href = tier === 'founder'
+                ? 'mailto:founder@tradeflow.ai?subject=Founder Access Request'
+                : `mailto:billing@tradeflow.ai?subject=Upgrade to ${tier} plan`;
+            }}
+          />
+        </Suspense>
       </main>
     );
   }
@@ -233,11 +270,13 @@ function App() {
         userLabel={isAuthenticated ? `${userEmail} · ${userTier}` : undefined}
       />
 
-      <MarketingLanding
-        onPrimaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'login')}
-        onSecondaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'plans')}
-        onPricingAction={() => navigate('plans')}
-      />
+      <Suspense fallback={<ViewLoader />}>
+        <MarketingLanding
+          onPrimaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'login')}
+          onSecondaryAction={() => navigate(isAuthenticated ? 'dashboard' : 'plans')}
+          onPricingAction={() => navigate('plans')}
+        />
+      </Suspense>
     </main>
   );
 }

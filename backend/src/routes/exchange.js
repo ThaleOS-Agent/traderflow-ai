@@ -6,6 +6,7 @@ import { MultiExchangeConnector } from '../services/exchanges/multiExchange.js';
 import { getMarketCandles } from '../services/marketFeedService.js';
 import { SUPPORTED_TRADING_VENUES } from '../config/tradingVenues.js';
 import { nativeExchangeStreamService, SUPPORTED_NATIVE_WS_VENUES } from '../services/nativeExchangeStreamService.js';
+import { derivService } from '../services/derivService.js';
 
 const router = express.Router();
 
@@ -41,6 +42,7 @@ function sanitizeExchange(exchange) {
 }
 
 const VENUE_DETAILS = {
+  deriv: { label: 'Deriv', type: 'broker', credentialHint: 'API token + optional app ID' },
   binance: { label: 'Binance', type: 'exchange', credentialHint: 'API key + secret' },
   coinbase: { label: 'Coinbase Advanced Trade', type: 'exchange', credentialHint: 'API key + secret + passphrase' },
   kraken: { label: 'Kraken', type: 'exchange', credentialHint: 'API key + secret' },
@@ -53,6 +55,15 @@ const VENUE_DETAILS = {
 };
 
 const VENUE_CAPABILITIES = {
+  deriv: {
+    live: true,
+    paper: true,
+    assetClasses: ['derived indices', 'forex', 'commodities', 'synthetic indices'],
+    transport: { marketData: 'WebSocket', account: 'WebSocket', orders: 'WebSocket', platformWebSocket: true, nativeExchangeWebSocket: false },
+    credentials: ['apiKey', 'passphrase'],
+    supports: ['activeSymbols', 'ticksHistory', 'contractsFor', 'proposal', 'buy', 'authorize'],
+    notes: 'Uses the Deriv WebSocket API. Save the API token as apiKey and, if needed, place the app ID in the passphrase field. The default app ID falls back to DERIV_APP_ID or 1089.'
+  },
   binance: {
     live: true,
     paper: true,
@@ -224,6 +235,19 @@ router.get('/balance', authenticate, async (req, res) => {
     const saved = getActiveExchange(req.user, req.query.exchange);
     if (!saved) {
       return res.status(400).json({ success: false, error: 'No exchange connection configured' });
+    }
+
+    if (saved.name === 'deriv') {
+      const account = await derivService.getBalance({
+        token: saved.apiKey,
+        appId: saved.passphrase
+      });
+
+      return res.json({
+        success: true,
+        exchange: saved.name,
+        balances: account
+      });
     }
 
     const connector = new MultiExchangeConnector(saved.name, saved.isTestnet);
@@ -417,9 +441,13 @@ router.post('/connections', authenticate, async (req, res) => {
 
     let testResult = null;
     if (testConnection) {
-      const connector = new MultiExchangeConnector(normalizedName, Boolean(isTestnet));
-      connector.setCredentials(apiKey, apiSecret, passphrase);
-      testResult = await connector.getAccount();
+      if (normalizedName === 'deriv') {
+        testResult = await derivService.getBalance({ token: apiKey, appId: passphrase });
+      } else {
+        const connector = new MultiExchangeConnector(normalizedName, Boolean(isTestnet));
+        connector.setCredentials(apiKey, apiSecret, passphrase);
+        testResult = await connector.getAccount();
+      }
     }
 
     await req.user.save();

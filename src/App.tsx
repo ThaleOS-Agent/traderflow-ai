@@ -3,7 +3,7 @@ import { ArrowRight, Menu, User2 } from 'lucide-react';
 import './index.css';
 import useLenis from './hooks/useLenis';
 import { siteConfig } from './config';
-import { api } from './dashboard/api';
+import { api, type AuthUser } from './dashboard/api';
 
 const Dashboard = lazy(async () => {
   const module = await import('./dashboard');
@@ -121,7 +121,7 @@ function App() {
   const [currentView, setCurrentView] = useState<View>(() => viewFromPath(window.location.pathname));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
-  const [user, setUser] = useState<Record<string, unknown> | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   useLenis();
 
@@ -166,7 +166,7 @@ function App() {
     window.history.replaceState({}, '', pathFromView(view));
   };
 
-  const handleLogin = (nextUser?: Record<string, unknown>) => {
+  const handleLogin = (nextUser?: AuthUser) => {
     setUser(nextUser ?? null);
     setIsAuthenticated(true);
     navigate(window.location.pathname === '/connections/accounts' ? 'account-connections' : 'dashboard');
@@ -179,12 +179,10 @@ function App() {
     navigate('landing');
   };
 
-  const subscriptionTier = typeof user?.subscription === 'object' && user.subscription
-    ? String((user.subscription as { tier?: unknown }).tier ?? '')
-    : '';
-  const directTier = typeof user?.tier === 'string' ? user.tier : '';
+  const subscriptionTier = user?.subscription?.tier ?? '';
+  const directTier = user?.tier ?? '';
   const userTier = subscriptionTier || directTier || (user?.isFounder === true ? 'founder' : 'free');
-  const userEmail = typeof user?.email === 'string' ? user.email : '';
+  const userEmail = user?.email ?? '';
   const isFounder = userTier === 'founder';
 
   if (!authChecked) {

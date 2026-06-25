@@ -148,11 +148,23 @@ Stop the stack:
 docker compose down
 ```
 
-MongoDB data is stored in the `traderflow-ai_mongodb_data` Docker volume.
+MongoDB data is stored on the host in `./.data/mongodb` and `./.data/mongodb-config` by default.
+That makes local data survive container recreation and lets you move the storage paths with
+`MONGODB_DATA_DIR` and `MONGODB_CONFIG_DIR`.
+
+For a clean wipe of local Mongo data, remove those directories explicitly.
 
 ## Deployment
 
 The supported production path is Railway using the Dockerfile.
+
+For 24/7 reachability, production should use a managed persistent MongoDB service such as:
+
+- Railway MongoDB attached to the app service
+- MongoDB Atlas
+- Another remotely hosted MongoDB cluster with backups and monitoring
+
+Do not point production `MONGODB_URI` at `localhost`. The backend now rejects that configuration.
 
 Required Railway service variables:
 
@@ -175,6 +187,13 @@ bash scripts/setup-railway-mongo.sh
 ```
 
 The helper script creates the Railway MongoDB service if needed and copies its connection string into the app service `MONGODB_URI` variable without echoing the secret value.
+
+Recommended production posture for MongoDB:
+
+- use a managed service, not a local file-backed database on the app host
+- enable provider backups or snapshots
+- keep connection strings in Railway variables, not in the repo
+- verify the app service and Mongo service are in the same Railway project/environment
 
 The current production Railway target is project `Tradeflow AI`, service `traderflow-ai`, environment `production`, with the database service named `MongoDB`.
 

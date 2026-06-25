@@ -1,46 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AlertCircle, ArrowLeft, KeyRound, RefreshCw, ShieldCheck, Waves, Wifi } from 'lucide-react';
-import { api } from './api';
-
-type AccountMonitorCard = {
-  _id?: string;
-  exchange: string;
-  label: string;
-  configured: boolean;
-  authenticated: boolean;
-  privateStreamStatus: string;
-  heartbeatStatus: string;
-  lastPong: string | null;
-  reconnectCount: number;
-  nextSessionRotation: string | null;
-  listenKeyRefreshTimer: string | null;
-  latestBalanceEvent: Record<string, unknown> | null;
-  latestOrderEvent: Record<string, unknown> | null;
-  stateReconciliationStatus: string;
-  tradingPermissionStatus: string;
-  withdrawalPermissionWarning: boolean;
-  assistantMessage: string;
-  config: {
-    exchange: string;
-    environment: string;
-    authMethod?: string;
-    permissions?: {
-      trade?: boolean;
-      withdraw?: boolean;
-    };
-  };
-};
-
-type MonitorResponse = {
-  flags: {
-    enablePaperTrading: boolean;
-    enableLiveTrading: boolean;
-    demoMode: boolean;
-  };
-  cards: AccountMonitorCard[];
-  warnings: string[];
-  recommendations: string[];
-};
+import { api, type AccountMonitorResponse } from './api';
 
 const EXCHANGE_OPTIONS = [
   { value: 'binance_futures', label: 'Binance Futures' },
@@ -70,7 +30,7 @@ function statusTone(status: string) {
 }
 
 export function AccountConnectionsPage({ onBack }: { onBack: () => void }) {
-  const [monitor, setMonitor] = useState<MonitorResponse | null>(null);
+  const [monitor, setMonitor] = useState<AccountMonitorResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +47,7 @@ export function AccountConnectionsPage({ onBack }: { onBack: () => void }) {
   const load = useCallback(async () => {
     try {
       const response = await api.getAccountConnectionsMonitor();
-      setMonitor(response.monitor as MonitorResponse);
+      setMonitor(response.monitor);
     } catch (err) {
       setError((err as Error).message || 'Failed to load account monitor');
     } finally {

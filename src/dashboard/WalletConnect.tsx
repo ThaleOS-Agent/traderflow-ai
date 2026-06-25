@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Wallet, ExternalLink, Copy, CheckCircle, AlertCircle, Loader2, Unplug } from 'lucide-react';
-import { api } from './api';
+import { api, type WalletConnectSession, type WalletSessionStatus } from './api';
 
 interface WalletState {
   address: string;
@@ -12,11 +12,7 @@ interface WalletState {
   verified: boolean;
 }
 
-interface WalletSessionState {
-  id: string;
-  uri: string;
-  message: string;
-  expiresAt: string;
+interface WalletSessionState extends WalletConnectSession {
   status?: string;
   walletAddress?: string;
   chainId?: number;
@@ -191,7 +187,7 @@ export function WalletConnect() {
     const timer = window.setInterval(async () => {
       try {
         const res = await api.getWalletSession(walletSessionId);
-        setWalletSession(current => current ? { ...current, ...res.status } : current);
+        setWalletSession(current => current ? { ...current, ...(res.status as WalletSessionStatus) } : current);
       } catch {
         // Session polling is informational only.
       }

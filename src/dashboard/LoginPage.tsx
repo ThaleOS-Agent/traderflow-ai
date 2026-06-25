@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ArrowRight, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
-import { api } from './api';
+import { api, type AuthUser } from './api';
 
 interface LoginPageProps {
-  onLogin: (user?: Record<string, unknown>) => void;
+  onLogin: (user?: AuthUser) => void;
 }
 
 type Mode = 'login' | 'register';

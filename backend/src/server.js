@@ -22,13 +22,9 @@ import { autoExecution } from './services/autoExecution.js';
 import { arbitrageDetector } from './services/arbitrageDetector.js';
 import { mlPredictor } from './services/mlPredictor.js';
 import { notificationService } from './services/notificationService.js';
-import { dexIntegration } from './services/dexIntegration.js';
 import { advancedRiskManager } from './services/advancedRiskManager.js';
-import { socialTradingService } from './services/socialTrading.js';
-import { optionsTradingService } from './services/optionsTrading.js';
 import { ensembleMaster } from './services/ensembleMasterStrategy.js';
 import { mlTrainingService } from './services/mlTrainingService.js';
-import { enhancedBacktestEngine } from './services/enhancedBacktestEngine.js';
 import { walletConnectService } from './services/walletConnectService.js';
 import { oandaForexService } from './services/oandaForex.js';
 import { agentOrchestrator } from './services/agentOrchestrator.js';
@@ -45,21 +41,16 @@ import exchangeRoutes from './routes/exchange.js';
 import patternRoutes from './routes/patterns.js';
 import scannerRoutes from './routes/scanner.js';
 import executionRoutes from './routes/execution.js';
-import arbitrageRoutes from './routes/arbitrage.js';
-import backtestRoutes from './routes/backtest.js';
 import notificationRoutes from './routes/notifications.js';
-import dexRoutes from './routes/dex.js';
 import riskRoutes from './routes/risk.js';
 import mlRoutes from './routes/ml.js';
-import socialRoutes from './routes/social.js';
-import optionsRoutes from './routes/options.js';
 import trainingRoutes from './routes/training.js';
 import walletRoutes from './routes/wallet.js';
 import forexRoutes from './routes/forex.js';
 import mt5Routes from './routes/mt5.js';
 import agentRoutes from './routes/agents.js';
-import auditRoutes from './routes/audit.js';
 import accountConnectionRoutes from './routes/accountConnections.js';
+import derivRoutes from './routes/deriv.js';
 
 dotenv.config({ path: join(__dirname, '../../.env.local') });
 dotenv.config({ path: join(__dirname, '../../.env'), override: false });
@@ -116,47 +107,11 @@ const authLimiter = rateLimit({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', limiter);
-
-// Connect to database only after required env is present.
-await connectDB();
-
-// Setup WebSocket
-setupWebSocket(wss);
-
 // Initialize Trading Engine
 const tradingEngine = new TradingEngine(wss);
 
 // Initialize Pattern Scanner
 const patternScanner = new PatternScanner(wss);
-
-// Initialize Auto-Execution Engine
-autoExecution.wss = wss;
-
-// Initialize shared agent orchestration before scheduled agents start.
-agentOrchestrator.initialize({
-  wss,
-  tradingEngine,
-  autoExecution,
-  advancedRiskManager,
-  mlPredictor
-});
-
-tradingEngine.agentOrchestrator = agentOrchestrator;
-patternScanner.agentOrchestrator = agentOrchestrator;
-assetScanner.agentOrchestrator = agentOrchestrator;
-arbitrageDetector.agentOrchestrator = agentOrchestrator;
-autoExecution.agentOrchestrator = agentOrchestrator;
-advancedRiskManager.agentOrchestrator = agentOrchestrator;
-
-tradingEngine.initialize();
-patternScanner.initialize();
-
-nativeExchangeStreamService.attach({
-  wss,
-  tradingEngine,
-  agentOrchestrator,
-  advancedRiskManager
-});
 
 const defaultUsdSymbols = ['BTCUSD', 'ETHUSD', 'SOLUSD'];
 
@@ -171,53 +126,6 @@ const exchangeConfigs = [
   { exchange: 'bitfinex', isTestnet: false },
   { exchange: 'oanda', isTestnet: true }
 ];
-
-nativeExchangeStreamService.initialize({
-  subscriptions: [
-    { venue: 'binance', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
-    { venue: 'bybit', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
-    { venue: 'coinbase', symbols: defaultUsdSymbols, isTestnet: true },
-    { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false }
-  ]
-}).then(() => {
-  logger.info('THAELIA exchange gateway initialized');
-}).catch(err => {
-  logger.error('Failed to initialize THAELIA exchange gateway:', err.message);
-});
-
-assetScanner.initialize(exchangeConfigs).then(() => {
-  logger.info('Asset Scanner initialized with multi-exchange support');
-}).catch(err => {
-  logger.error('Failed to initialize Asset Scanner:', err);
-});
-
-// Initialize Arbitrage Detector
-arbitrageDetector.initialize(exchangeConfigs).then(() => {
-  logger.info('Arbitrage Detector initialized');
-}).catch(err => {
-  logger.error('Failed to initialize Arbitrage Detector:', err);
-});
-
-// Initialize ML Predictor
-mlPredictor.initialize().then(() => {
-  logger.info('ML Predictor initialized');
-}).catch(err => {
-  logger.error('Failed to initialize ML Predictor:', err);
-});
-
-// Initialize Notification Service
-notificationService.initialize().then(() => {
-  logger.info('Notification Service initialized');
-}).catch(err => {
-  logger.error('Failed to initialize Notification Service:', err);
-});
-
-// Initialize DEX Integration
-dexIntegration.initialize(['pancakeswap', 'sushiswap', 'uniswap_v3']).then(() => {
-  logger.info('DEX Integration initialized');
-}).catch(err => {
-  logger.error('Failed to initialize DEX Integration:', err);
-});
 
 // Connect asset scanner to auto-execution
 // When opportunities are found, auto-execute for users with auto-trading enabled
@@ -236,21 +144,16 @@ app.use('/api/exchange', exchangeRoutes);
 app.use('/api/patterns', patternRoutes);
 app.use('/api/scanner', scannerRoutes);
 app.use('/api/execution', executionRoutes);
-app.use('/api/arbitrage', arbitrageRoutes);
-app.use('/api/backtest', backtestRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/dex', dexRoutes);
 app.use('/api/risk', riskRoutes);
 app.use('/api/ml', mlRoutes);
-app.use('/api/social', socialRoutes);
-app.use('/api/options', optionsRoutes);
 app.use('/api/training', trainingRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/forex', forexRoutes);
 app.use('/api/mt5', mt5Routes);
 app.use('/api/agents', agentRoutes);
-app.use('/api/audit', auditRoutes);
 app.use('/api/account-connections', accountConnectionRoutes);
+app.use('/api/deriv', derivRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -266,7 +169,6 @@ app.get('/api/health', (req, res) => {
     arbitrageDetector: arbitrageDetector.isRunning ? 'running' : 'stopped',
     mlPredictor: 'initialized',
     notificationService: notificationService.isInitialized ? 'initialized' : 'not_initialized',
-    dexIntegration: dexIntegration.isInitialized ? 'initialized' : 'not_initialized',
     advancedRiskManager: 'initialized',
     accountGatewayFlags: {
       enablePaperTrading: process.env.ENABLE_PAPER_TRADING !== 'false',
@@ -309,9 +211,72 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 
-httpServer.listen(PORT, () => {
-  logger.info(`TradeFlow AI Server running on port ${PORT}`);
-  logger.info(`WebSocket server ready on ws://localhost:${PORT}/ws`);
+async function initializeService(name, initializer) {
+  try {
+    await initializer();
+    logger.info(`${name} initialized`);
+  } catch (error) {
+    logger.error(`Failed to initialize ${name}:`, error?.message || error);
+  }
+}
+
+async function bootstrap() {
+  await connectDB();
+  setupWebSocket(wss);
+  autoExecution.wss = wss;
+
+  agentOrchestrator.initialize({
+    wss,
+    tradingEngine,
+    autoExecution,
+    advancedRiskManager,
+    mlPredictor
+  });
+
+  tradingEngine.agentOrchestrator = agentOrchestrator;
+  patternScanner.agentOrchestrator = agentOrchestrator;
+  assetScanner.agentOrchestrator = agentOrchestrator;
+  arbitrageDetector.agentOrchestrator = agentOrchestrator;
+  autoExecution.agentOrchestrator = agentOrchestrator;
+  advancedRiskManager.agentOrchestrator = agentOrchestrator;
+
+  tradingEngine.initialize();
+  patternScanner.initialize();
+
+  nativeExchangeStreamService.attach({
+    wss,
+    tradingEngine,
+    agentOrchestrator,
+    advancedRiskManager
+  });
+
+  await Promise.all([
+    initializeService('THAELIA exchange gateway', () => nativeExchangeStreamService.initialize({
+      subscriptions: [
+        { venue: 'binance', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
+        { venue: 'bybit', symbols: tradingEngine.tradingPairs.crypto, isTestnet: true },
+        { venue: 'coinbase', symbols: defaultUsdSymbols, isTestnet: true },
+        { venue: 'kraken', symbols: defaultUsdSymbols, isTestnet: false }
+      ]
+    })),
+    initializeService('Asset Scanner', () => assetScanner.initialize(exchangeConfigs)),
+    initializeService('Arbitrage Detector', () => arbitrageDetector.initialize(exchangeConfigs)),
+    initializeService('ML Predictor', () => mlPredictor.initialize()),
+    initializeService('Notification Service', () => notificationService.initialize())
+  ]);
+
+  await new Promise((resolve) => {
+    httpServer.listen(PORT, () => {
+      logger.info(`TradeFlow AI Server running on port ${PORT}`);
+      logger.info(`WebSocket server ready on ws://localhost:${PORT}/ws`);
+      resolve();
+    });
+  });
+}
+
+bootstrap().catch((error) => {
+  logger.error('Failed to bootstrap TradeFlow AI server:', error);
+  process.exit(1);
 });
 
 export { 
@@ -322,13 +287,9 @@ export {
   arbitrageDetector,
   mlPredictor,
   notificationService,
-  dexIntegration,
   advancedRiskManager,
-  socialTradingService,
-  optionsTradingService,
   ensembleMaster,
   mlTrainingService,
-  enhancedBacktestEngine,
   walletConnectService,
   oandaForexService,
   agentOrchestrator,

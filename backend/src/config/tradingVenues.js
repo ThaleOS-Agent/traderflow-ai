@@ -1,4 +1,5 @@
 export const SUPPORTED_TRADING_VENUES = Object.freeze([
+  'deriv',
   'binance',
   'coinbase',
   'kraken',

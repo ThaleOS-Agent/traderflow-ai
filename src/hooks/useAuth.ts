@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { api } from '../dashboard/api';
-
-type UserRecord = Record<string, unknown>;
+import { api, type AuthUser } from '../dashboard/api';
 
 interface AuthState {
-  user: UserRecord | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -21,8 +19,7 @@ export function useAuth() {
 
     api.getMe()
       .then((data) => {
-        const user = (data as { user?: UserRecord }).user ?? (data as UserRecord);
-        setState({ user, isAuthenticated: true, isLoading: false });
+        setState({ user: data.user, isAuthenticated: true, isLoading: false });
       })
       .catch(() => {
         api.logout();
@@ -32,9 +29,8 @@ export function useAuth() {
 
   const login = useCallback(async (email: string, password: string) => {
     const data = await api.login(email, password);
-    const user = (data as { user?: UserRecord }).user ?? null;
-    setState({ user, isAuthenticated: true, isLoading: false });
-    return user;
+    setState({ user: data.user, isAuthenticated: true, isLoading: false });
+    return data.user;
   }, []);
 
   const logout = useCallback(() => {

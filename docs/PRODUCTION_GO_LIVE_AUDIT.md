@@ -10,6 +10,24 @@ This audit uses the Trade-M8 reference reports as a pattern, but keeps TraderFlo
 - Latest local checks: `npm run lint` and `npm run build`
 - Known build warning: large frontend chunks after minification
 
+## Codebase Hygiene And Integration Audit
+
+### Repo Cleanup Evidence - 2026-06-24
+
+- Removed obsolete or replaced code paths that were no longer part of the active production stack:
+  `ai-text-demo/`, `quantopian_algos`, `debug.cjs`, and the replaced legacy backtest service `backend/src/services/backtestEngine.js`.
+- Removed generated Python bytecode from `services/ml-api` and added Python ignore rules in `.gitignore` so `__pycache__/` and `*.pyc` do not re-enter the repo.
+- Refactored [mlPredictor.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/mlPredictor.js) into a thin adapter over [mlApiClient.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/clients/mlApiClient.js).
+- Refactored [mlTrainingService.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/services/mlTrainingService.js) into a thin adapter over the same ML API client while preserving the route-facing cached status and weights contract.
+- Replaced the stale hardcoded `/api/ml/models` response in [ml.js](/Users/gee/Documents/Documents_Gee/GitHub/traderflow-ai/backend/src/routes/ml.js) with a service-backed model lookup so the backend no longer advertises static model metadata that can drift from the FastAPI ML service.
+- Local verification on 2026-06-24 passed `node --check` for the updated ML service and route files, plus repo-level `npm run lint` and `npm run build`.
+
+#### Remaining Hygiene Audit Targets
+
+- `backend/src/services/exchangeGateway.js` currently appears to be consumed only by `nativeExchangeStreamService.js`; ownership and necessity should be reviewed before further deletion.
+- `backend/src/services/privateAccountGatewayService.js` is only referenced by the account-connections route and should be kept until the THAELIA account-monitor surface is either verified live or redesigned.
+- Strategy modules under `backend/src/services/strategies/` are intentionally leaf modules via `strategies/index.js`; they are not deletion candidates based on import count alone.
+
 ## Go-Live Evidence Gates
 
 ### 1. Authentication And Founder Access

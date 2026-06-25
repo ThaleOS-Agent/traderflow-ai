@@ -1,76 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link2, Plus, Trash2, AlertCircle, Waves, ShieldCheck, Eye } from 'lucide-react';
-import { api } from './api';
+import { api, type ExchangeCapabilitiesResponse, type ExchangeConnection, type ExchangeConnectionPayload, type ExchangeVenue, type StreamingStatus } from './api';
 
-interface ExchangeConnection {
-  id: string;
-  name: string;
-  isTestnet: boolean;
-  isActive: boolean;
-  hasApiKey: boolean;
-  hasApiSecret: boolean;
-  hasPassphrase: boolean;
-}
-
-interface SupportedVenue {
-  name: string;
-  label?: string;
-  type?: string;
-  credentialHint?: string;
-  configured?: boolean;
-  connection?: ExchangeConnection | null;
-  capabilities?: {
-    live: boolean;
-    paper: boolean;
-    assetClasses: string[];
-    transport: {
-      marketData: string;
-      account: string;
-      orders: string;
-      platformWebSocket: boolean;
-      nativeExchangeWebSocket: boolean;
-    };
-    credentials: string[];
-    supports: string[];
-    notes: string;
-  } | null;
-}
-
-interface VenueCapabilityFallback extends SupportedVenue {
+interface VenueCapabilityFallback extends ExchangeVenue {
   configured?: boolean;
   connection?: ExchangeConnection | null;
 }
 
-interface StreamingConnection {
-  venue: string;
-  exchange?: string;
-  isTestnet: boolean;
-  transport?: string;
-  status: string;
-  healthScore?: number;
-  healthBand?: string;
-  symbols: string[];
-  connectedAt: number | null;
-  lastMessageAt: number | null;
-  latencyMs?: number | null;
-  reconnectCount?: number;
-  missedPings?: number;
-  sequenceGaps?: number;
-  messageRate?: number;
-  warnings?: string[];
-  recommendations?: string[];
-  recoveryActions?: string[];
-}
-
-interface StreamingStatus {
-  queues?: Record<string, { name: string; depth: number; dropped: number }>;
-  connections: StreamingConnection[];
-  warnings?: string[];
-  recommendations?: string[];
-  recoveryActions?: string[];
-}
-
-const defaultForm = {
+const defaultForm: ExchangeConnectionPayload = {
   name: 'binance',
   apiKey: '',
   apiSecret: '',
@@ -79,6 +16,7 @@ const defaultForm = {
 };
 
 const SUPPORTED_VENUES = [
+  { value: 'deriv', label: 'Deriv', type: 'Broker', hint: 'API token + optional app ID in passphrase' },
   { value: 'binance', label: 'Binance', type: 'Exchange', hint: 'API key + secret' },
   { value: 'coinbase', label: 'Coinbase Advanced Trade', type: 'Exchange', hint: 'API key + secret + passphrase' },
   { value: 'kraken', label: 'Kraken', type: 'Exchange', hint: 'API key + secret' },
@@ -99,9 +37,33 @@ function venueMeta(name: string) {
   };
 }
 
+function fieldPlaceholders(name: string) {
+  if (name === 'deriv') {
+    return {
+      apiKey: 'Deriv API token',
+      apiSecret: 'Optional secret (leave blank)',
+      passphrase: 'Deriv app ID (optional, defaults to configured app ID)'
+    };
+  }
+
+  if (name === 'oanda') {
+    return {
+      apiKey: 'API key / token',
+      apiSecret: 'API secret',
+      passphrase: 'Passphrase or OANDA account ID'
+    };
+  }
+
+  return {
+    apiKey: 'API key / token',
+    apiSecret: 'API secret',
+    passphrase: 'Passphrase or OANDA account ID'
+  };
+}
+
 export function ExchangeConnections() {
   const [connections, setConnections] = useState<ExchangeConnection[]>([]);
-  const [supportedVenues, setSupportedVenues] = useState<SupportedVenue[]>([]);
+  const [supportedVenues, setSupportedVenues] = useState<ExchangeCapabilitiesResponse['venues']>([]);
   const [streamingStatus, setStreamingStatus] = useState<StreamingStatus | null>(null);
   const [platformSocket, setPlatformSocket] = useState<{
     path: string;
@@ -110,8 +72,8 @@ export function ExchangeConnections() {
     channels: string[];
     notes: string;
   } | null>(null);
-  const [selectedVenue, setSelectedVenue] = useState<SupportedVenue | null>(null);
-  const [form, setForm] = useState<Record<string, string | boolean>>(defaultForm);
+  const [selectedVenue, setSelectedVenue] = useState<ExchangeCapabilitiesResponse['venues'][number] | null>(null);
+  const [form, setForm] = useState<ExchangeConnectionPayload>(defaultForm);
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [balanceLoading, setBalanceLoading] = useState('');
@@ -126,14 +88,14 @@ export function ExchangeConnections() {
     ]);
 
     if (connectionsResult.status === 'fulfilled') {
-      setConnections(connectionsResult.value.connections as unknown as ExchangeConnection[]);
+      setConnections(connectionsResult.value.connections);
     } else {
       setConnections([]);
     }
 
     if (capabilitiesResult.status === 'fulfilled') {
       const fallbackSupported = connectionsResult.status === 'fulfilled' ? connectionsResult.value.supported ?? [] : [];
-      setSupportedVenues((capabilitiesResult.value.venues?.length ? capabilitiesResult.value.venues : fallbackSupported) as unknown as SupportedVenue[]);
+      setSupportedVenues(capabilitiesResult.value.venues?.length ? capabilitiesResult.value.venues : fallbackSupported);
       setPlatformSocket(capabilitiesResult.value.platformWebSocket ?? null);
     } else {
       setSupportedVenues([]);
@@ -141,7 +103,7 @@ export function ExchangeConnections() {
     }
 
     if (streamingResult.status === 'fulfilled') {
-      setStreamingStatus(streamingResult.value.streaming as StreamingStatus);
+      setStreamingStatus(streamingResult.value.streaming);
     } else {
       setStreamingStatus(null);
     }
@@ -438,6 +400,10 @@ export function ExchangeConnections() {
 
       {showForm && (
         <div className="grid grid-cols-2 gap-2 mt-3 bg-black/20 border border-white/10 rounded-lg p-3">
+          {(() => {
+            const placeholders = fieldPlaceholders(String(form.name));
+            return (
+              <>
           <select
             value={String(form.name)}
             onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -455,21 +421,21 @@ export function ExchangeConnections() {
           <input
             value={String(form.apiKey)}
             onChange={e => setForm(f => ({ ...f, apiKey: e.target.value }))}
-            placeholder="API key / token"
+            placeholder={placeholders.apiKey}
             className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
           />
           <input
             type="password"
             value={String(form.apiSecret)}
             onChange={e => setForm(f => ({ ...f, apiSecret: e.target.value }))}
-            placeholder="API secret"
+            placeholder={placeholders.apiSecret}
             className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
           />
           <input
             type="password"
             value={String(form.passphrase)}
             onChange={e => setForm(f => ({ ...f, passphrase: e.target.value }))}
-            placeholder="Passphrase or OANDA account ID"
+            placeholder={placeholders.passphrase}
             className="col-span-2 bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white placeholder-gray-600"
           />
           <label className="col-span-2 flex items-center gap-2 text-xs text-gray-400">
@@ -487,6 +453,9 @@ export function ExchangeConnections() {
           >
             {saving ? 'Saving…' : 'Save connection'}
           </button>
+              </>
+            );
+          })()}
         </div>
       )}
 

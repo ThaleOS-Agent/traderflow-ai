@@ -35,6 +35,7 @@ Thumbs.db
 
 # Testing
 coverage/
+.pytest_cache/
 
 # Local/generated workspace artifacts
 actions-runner/
@@ -44,3 +45,7 @@ tsc
 # Playwright MCP generated artifacts
 .playwright-mcp/page-*.yml
 .playwright-mcp/console-*.log
+
+# Python
+__pycache__/
+*.pyc

@@ -35,6 +35,13 @@ FRONTEND_URL=https://<your-railway-domain>
 NODE_ENV=production
 ```
 
+Production MongoDB policy:
+
+- `MONGODB_URI` must point to a persistent managed MongoDB service
+- do not use `localhost`, `127.0.0.1`, or `::1` in production
+- prefer Railway MongoDB or MongoDB Atlas for 24/7 availability
+- ensure backups/snapshots are enabled at the provider level
+
 ### Railway MongoDB helper
 
 If you want Railway to host MongoDB for this app, use the included helper after Railway CLI login:
@@ -53,6 +60,12 @@ What it does:
 - creates a Railway MongoDB service if one does not already exist
 - reads the Mongo connection variable from that service
 - sets `MONGODB_URI` on the app service without printing the raw secret
+
+What it does not do:
+
+- it does not create backups for you
+- it does not make a localhost Mongo deployment production-safe
+- it does not override the app if `MONGODB_URI` is later replaced with a non-persistent value
 
 After that, make sure the app service also has:
 
@@ -132,3 +145,21 @@ long-running Node host.
 npm run build
 npm --prefix backend ci --dry-run --ignore-scripts --no-audit --no-fund --omit=dev
 ```
+
+## Local Docker Mongo persistence
+
+`docker-compose.yml` stores MongoDB data on the host by default:
+
+```text
+./.data/mongodb
+./.data/mongodb-config
+```
+
+Override those paths with:
+
+```text
+MONGODB_DATA_DIR=/absolute/path/to/mongodb-data
+MONGODB_CONFIG_DIR=/absolute/path/to/mongodb-config
+```
+
+This is suitable for local durability, but it is not the recommended 24/7 production path.

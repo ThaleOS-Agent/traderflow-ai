@@ -418,7 +418,7 @@ export function MarketingLanding({
 
             <div className="mt-8 space-y-3">
               {[
-                `Native stream venues supported: ${streaming?.supportedVenues.length ?? 0}`,
+                `Native stream venues supported: ${streaming?.supportedVenues?.length ?? 0}`,
                 `Agent orchestrator: ${health?.agentOrchestrator ?? 'loading'}`,
                 `Auto execution engine: ${health?.autoExecution ?? 'loading'}`,
               ].map((item) => (

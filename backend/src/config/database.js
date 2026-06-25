@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { logger } from '../utils/logger.js';
 
+mongoose.set('bufferCommands', false);
+
 export const connectDB = async () => {
   try {
     // ── Connection pool monitoring ──────────────────────────────────────────
@@ -92,8 +94,10 @@ export const connectDB = async () => {
         logger.warn('MongoDB pool: cleared', { address })
       );
     }
+
+    return conn;
   } catch (error) {
     logger.error('MongoDB connection error:', error);
-    process.exit(1);
+    throw error;
   }
 };

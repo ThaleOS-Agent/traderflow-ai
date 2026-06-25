@@ -181,37 +181,7 @@ router.get('/performance', authenticate, async (req, res) => {
  */
 router.get('/models', authenticate, async (req, res) => {
   try {
-    const models = [
-      {
-        name: 'priceDirection',
-        type: 'neural_network',
-        description: 'Predicts price direction (bullish/bearish/neutral)',
-        accuracy: 0.894,
-        features: ['rsi', 'macd', 'volume_profile', 'support_resistance', 'trend_strength']
-      },
-      {
-        name: 'opportunityScore',
-        type: 'ensemble',
-        description: 'Scores trading opportunities using multiple models',
-        accuracy: 0.904,
-        models: [
-          { name: 'neural_network', weight: 0.45, accuracy: 0.894 },
-          { name: 'fibonacci', weight: 0.25, accuracy: 0.849 },
-          { name: 'volatility', weight: 0.15, accuracy: 0.829 },
-          { name: 'kelly', weight: 0.10, accuracy: 0.848 },
-          { name: 'trend', weight: 0.03, accuracy: 0.769 },
-          { name: 'mean_reversion', weight: 0.01, accuracy: 0.809 },
-          { name: 'breakout', weight: 0.01, accuracy: 0.739 }
-        ]
-      },
-      {
-        name: 'volatilityForecast',
-        type: 'lstm',
-        description: 'Forecasts future volatility',
-        accuracy: 0.82,
-        features: ['atr', 'historical_vol', 'volume_volatility', 'price_range']
-      }
-    ];
+    const models = await mlPredictor.getModels();
     
     res.json({
       success: true,

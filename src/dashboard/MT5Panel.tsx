@@ -1,49 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { TrendingUp, TrendingDown, RefreshCw, Circle, AlertCircle, Plus, Trash2 } from 'lucide-react';
-import { api } from './api';
+import { api, type Mt5AccountSummary, type Mt5ConnectionPayload, type Mt5Position, type MtConnection } from './api';
 
-interface MT5Account {
-  login: string;
-  name: string;
-  broker: string;
-  currency: string;
-  balance: number;
-  equity: number;
-  margin: number;
-  freeMargin: number;
-  platform: string;
-  connected: boolean;
-  _mock?: boolean;
-}
-
-interface MT5Position {
-  id: string;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  volume: number;
-  openPrice: number;
-  currentPrice: number;
-  profit: number;
-  swap: number;
-  openTime: string;
-  _mock?: boolean;
-}
-
-interface MTConnection {
-  id: string;
-  platform: 'mt4' | 'mt5';
-  provider: 'bridge' | 'metaapi';
-  label: string;
-  login?: string;
-  server?: string;
-  accountId?: string;
-  apiUrl?: string;
-  isDemo: boolean;
-  isActive: boolean;
-  connectionStatus: 'untested' | 'connected' | 'failed';
-}
-
-const emptyForm = {
+const emptyForm: Mt5ConnectionPayload = {
   platform: 'mt5',
   provider: 'bridge',
   label: '',
@@ -61,12 +20,12 @@ function fmt(n: number, d = 2) {
 }
 
 export function MT5Panel() {
-  const [account, setAccount] = useState<MT5Account | null>(null);
-  const [positions, setPositions] = useState<MT5Position[]>([]);
+  const [account, setAccount] = useState<Mt5AccountSummary | null>(null);
+  const [positions, setPositions] = useState<Mt5Position[]>([]);
   const [mode, setMode] = useState<string>('');
-  const [connections, setConnections] = useState<MTConnection[]>([]);
+  const [connections, setConnections] = useState<MtConnection[]>([]);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<Record<string, string | boolean>>(emptyForm);
+  const [form, setForm] = useState<Mt5ConnectionPayload>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -82,14 +41,14 @@ export function MT5Panel() {
       ]);
 
       if (statusRes.status === 'fulfilled') {
-        setAccount(statusRes.value.account as unknown as MT5Account);
+        setAccount(statusRes.value.account);
         setMode(statusRes.value.mode);
       }
       if (posRes.status === 'fulfilled') {
-        setPositions(posRes.value.positions as unknown as MT5Position[]);
+        setPositions(posRes.value.positions);
       }
       if (connectionRes.status === 'fulfilled') {
-        setConnections(connectionRes.value.connections as unknown as MTConnection[]);
+        setConnections(connectionRes.value.connections);
       }
     } catch {
       setError('Failed to load MT5 data');
@@ -192,7 +151,7 @@ export function MT5Panel() {
           <div className="grid grid-cols-2 gap-2 bg-black/20 border border-white/10 rounded-lg p-3">
             <select
               value={String(form.platform)}
-              onChange={e => setForm(f => ({ ...f, platform: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, platform: e.target.value as Mt5ConnectionPayload['platform'] }))}
               className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white"
             >
               <option value="mt5">MT5</option>
@@ -200,7 +159,7 @@ export function MT5Panel() {
             </select>
             <select
               value={String(form.provider)}
-              onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
+              onChange={e => setForm(f => ({ ...f, provider: e.target.value as Mt5ConnectionPayload['provider'] }))}
               className="bg-white/5 border border-white/10 rounded-lg px-2 py-2 text-xs text-white"
             >
               <option value="bridge">REST bridge</option>
@@ -273,15 +232,15 @@ export function MT5Panel() {
           <div className="grid grid-cols-2 gap-2 mb-4">
             <div className="bg-white/5 rounded-lg p-2.5">
               <p className="text-gray-500 text-xs">Balance</p>
-              <p className="text-white font-semibold text-sm">${fmt(account.balance)}</p>
+              <p className="text-white font-semibold text-sm">${fmt(account.balance ?? 0)}</p>
             </div>
             <div className="bg-white/5 rounded-lg p-2.5">
               <p className="text-gray-500 text-xs">Equity</p>
-              <p className="text-white font-semibold text-sm">${fmt(account.equity)}</p>
+              <p className="text-white font-semibold text-sm">${fmt(account.equity ?? 0)}</p>
             </div>
             <div className="bg-white/5 rounded-lg p-2.5">
               <p className="text-gray-500 text-xs">Free Margin</p>
-              <p className="text-white font-semibold text-sm">${fmt(account.freeMargin)}</p>
+              <p className="text-white font-semibold text-sm">${fmt(account.freeMargin ?? 0)}</p>
             </div>
             <div className="bg-white/5 rounded-lg p-2.5">
               <p className="text-gray-500 text-xs">Open P&L</p>

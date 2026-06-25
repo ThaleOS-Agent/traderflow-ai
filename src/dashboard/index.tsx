@@ -5,8 +5,8 @@ import {
   ArrowUpRight, ArrowDownRight, Wifi, WifiOff, Settings,
   Crown, Star, CreditCard, ShieldCheck, Power, Brain, Radio, XCircle, Play, Menu, Bot, Newspaper,
 } from 'lucide-react';
-import { api } from './api';
-import { useTradeWebSocket, type LiveMarketData, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
+import { api, type ExchangeVenue, type PortfolioStats, type SignalSummary, type TradeSummary, type TradingSettings } from './api';
+import { useTradeWebSocket, type LiveMarketData, type LivePortfolioUpdate, type LiveSignal, type LiveTrade, type LiveWsEvent } from '../hooks/useTradeWebSocket';
 
 const SubscriptionPage = lazy(async () => {
   const module = await import('./SubscriptionPage');
@@ -16,6 +16,11 @@ const SubscriptionPage = lazy(async () => {
 const TradingViewChart = lazy(async () => {
   const module = await import('./TradingViewChart');
   return { default: module.TradingViewChart };
+});
+
+const DTraderPanel = lazy(async () => {
+  const module = await import('./DTraderPanel');
+  return { default: module.DTraderPanel };
 });
 
 const MT5Panel = lazy(async () => {
@@ -35,60 +40,8 @@ const SettingsPage = lazy(async () => {
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-interface PortfolioStats {
-  totalBalance: number;
-  availableBalance: number;
-  investedAmount: number;
-  totalProfit: number;
-  totalLoss: number;
-  winRate: number;
-  totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
-}
-
-interface Trade {
-  _id: string;
-  symbol: string;
-  side: 'buy' | 'sell' | 'BUY' | 'SELL';
-  status: string;
-  entryPrice: number;
-  exitPrice?: number;
-  quantity: number;
-  profit?: number;
-  profitLoss?: number;
-  strategy: string;
-  assetType?: string;
-  isPaperTrade?: boolean;
-  isAutoTrade?: boolean;
-  exchange?: string;
-  createdAt?: string;
-  openedAt?: string;
-}
-
-interface Signal {
-  _id: string;
-  symbol: string;
-  side: string;
-  strategy: string;
-  confidenceScore: number;
-  entryPrice: number;
-  stopLoss: number;
-  takeProfit: number;
-  createdAt: string;
-}
-
-interface TradingSettings {
-  autoTrading: boolean;
-  paperTrading: boolean;
-  defaultStrategy: string;
-  riskLevel: string;
-  maxDailyLoss: number;
-  maxPositionSize: number;
-  stopLossPercent: number;
-  takeProfitPercent: number;
-  leverage: number;
-}
+type Trade = TradeSummary;
+type Signal = SignalSummary;
 
 interface MarketFeedItem {
   symbol: string;
@@ -143,14 +96,6 @@ interface AiLearning {
     opportunityScore: number;
     volatilityForecast: number;
   }>;
-}
-
-interface ExchangeVenue {
-  name: string;
-  label?: string;
-  type?: string;
-  configured?: boolean;
-  connection?: Record<string, unknown> | null;
 }
 
 interface TradeStats {
@@ -220,8 +165,26 @@ interface AgentEvent {
   source: string;
   type: string;
   status: string;
-  payload: Record<string, unknown>;
+  payload: {
+    symbol?: string;
+    exchange?: string;
+    reason?: string;
+  };
   timestamp: string;
+}
+
+interface LiveEventPayload {
+  symbol?: string;
+  side?: string;
+  strategy?: string;
+  confidenceScore?: number | string;
+  status?: string;
+  exchange?: string;
+  isPaperTrade?: boolean;
+  pairs?: string[];
+  trade?: LiveTrade;
+  order?: LiveTrade;
+  portfolio?: PortfolioStats;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -246,8 +209,8 @@ function strategyLabel(code: string) {
   return code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function getRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+function getLiveEventPayload(value: unknown): LiveEventPayload {
+  return value && typeof value === 'object' ? value as LiveEventPayload : {};
 }
 
 function eventKind(event: string): LiveFeedEvent['kind'] {
@@ -261,23 +224,25 @@ function eventKind(event: string): LiveFeedEvent['kind'] {
 
 function describeLiveEvent(event: string, data: unknown): Pick<LiveFeedEvent, 'title' | 'detail' | 'kind'> {
   const kind = eventKind(event);
-  const record = getRecord(data);
-  const payload = getRecord(record.trade ?? record.order ?? data);
+  const record = getLiveEventPayload(data);
+  const payload = record.trade ?? record.order ?? record;
   const symbol = String(payload.symbol ?? record.symbol ?? '');
   const side = String(payload.side ?? record.side ?? '').toUpperCase();
+  const confidenceScore = payload === record ? record.confidenceScore : record.confidenceScore ?? undefined;
+  const exchange = payload.exchange ?? record.exchange;
 
   if (kind === 'signal') {
     return {
       kind,
       title: symbol ? `${symbol} ${side || 'Signal'}` : 'New signal',
-      detail: `${payload.strategy ?? record.strategy ?? 'strategy'} · ${payload.confidenceScore ?? record.confidenceScore ?? '—'}% confidence`,
+      detail: `${payload.strategy ?? record.strategy ?? 'strategy'} · ${confidenceScore ?? '—'}% confidence`,
     };
   }
   if (kind === 'order' || kind === 'trade') {
     return {
       kind,
       title: symbol ? `${symbol} ${side || 'Order'}` : event,
-      detail: `${payload.status ?? record.status ?? 'received'} · ${payload.exchange ?? record.exchange ?? (record.isPaperTrade ? 'paper' : 'broker')}`,
+      detail: `${payload.status ?? record.status ?? 'received'} · ${exchange ?? (record.isPaperTrade ? 'paper' : 'broker')}`,
     };
   }
   if (kind === 'market') {
@@ -301,12 +266,11 @@ function agentStatusTone(status: string) {
 }
 
 function summarizeAgentEvent(event: AgentEvent) {
-  const payload = getRecord(event.payload);
-  const symbol = String(payload.symbol ?? '');
-  const exchange = String(payload.exchange ?? '');
+  const symbol = String(event.payload.symbol ?? '');
+  const exchange = String(event.payload.exchange ?? '');
   if (symbol && exchange) return `${symbol} · ${exchange}`;
   if (symbol) return symbol;
-  if (payload.reason) return String(payload.reason);
+  if (event.payload.reason) return String(event.payload.reason);
   return event.type.replace(/_/g, ' ');
 }
 
@@ -424,25 +388,24 @@ export function Dashboard() {
       const idx = prev.findIndex(t => t._id === trade._id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = trade as Trade;
+        next[idx] = trade;
         return next;
       }
-      return [trade as Trade, ...prev].slice(0, 10);
+      return [trade, ...prev].slice(0, 10);
     });
   }, [appendLiveEvent]);
 
-  const handleOrder = useCallback((order: LiveTrade | Record<string, unknown>) => {
+  const handleOrder = useCallback((order: LiveTrade) => {
     appendLiveEvent('order_update', order);
-    const maybeTrade = order as Partial<LiveTrade>;
-    if (maybeTrade._id && maybeTrade.symbol) {
+    if (order._id && order.symbol) {
       setTrades(prev => {
-        const idx = prev.findIndex(t => t._id === maybeTrade._id);
+        const idx = prev.findIndex(t => t._id === order._id);
         if (idx >= 0) {
           const next = [...prev];
-          next[idx] = maybeTrade as Trade;
+          next[idx] = order;
           return next;
         }
-        return [maybeTrade as Trade, ...prev].slice(0, 10);
+        return [order, ...prev].slice(0, 10);
       });
     }
   }, [appendLiveEvent]);
@@ -465,12 +428,10 @@ export function Dashboard() {
     ]);
 
     if (portfolioRes.status === 'fulfilled') {
-      const p = portfolioRes.value as { portfolio?: PortfolioStats };
-      if (p.portfolio) setPortfolio(p.portfolio);
+      if (portfolioRes.value.portfolio) setPortfolio(portfolioRes.value.portfolio);
     }
     if (tradesRes.status === 'fulfilled') {
-      const t = tradesRes.value as { trades?: Trade[] };
-      const nextTrades = t.trades ?? [];
+      const nextTrades = tradesRes.value.trades ?? [];
       const currentIds = new Set(tradesRef.current.map(trade => trade._id).filter(Boolean));
       nextTrades
         .filter(trade => trade._id && !currentIds.has(trade._id))
@@ -488,7 +449,7 @@ export function Dashboard() {
     if (statsRes.status === 'fulfilled') setTradeStats(statsRes.value.stats);
     if (feedRes.status === 'fulfilled') setMarketFeed(feedRes.value.marketData);
     if (strategyRes.status === 'fulfilled') setStrategyResults(strategyRes.value.results.slice(0, 4));
-    if (exchangeRes.status === 'fulfilled') setExchangeVenues((exchangeRes.value.supported ?? []) as unknown as ExchangeVenue[]);
+    if (exchangeRes.status === 'fulfilled') setExchangeVenues(exchangeRes.value.supported ?? []);
     if (agentStatusRes.status === 'fulfilled') setAgentStatus(agentStatusRes.value.status);
     if (agentEventsRes.status === 'fulfilled') setAgentEvents(agentEventsRes.value.events);
     if (aiRes.status === 'fulfilled') {
@@ -505,16 +466,14 @@ export function Dashboard() {
     refreshLiveData().catch(() => {/* non-critical live refresh */});
   }, [handleTrade, refreshLiveData]);
 
-  const handleOrderUpdate = useCallback((order: LiveTrade | Record<string, unknown>) => {
+  const handleOrderUpdate = useCallback((order: LiveTrade) => {
     handleOrder(order);
     refreshLiveData().catch(() => {/* non-critical live refresh */});
   }, [handleOrder, refreshLiveData]);
 
-  const handlePortfolioUpdate = useCallback((data: unknown) => {
+  const handlePortfolioUpdate = useCallback((data: LivePortfolioUpdate) => {
     appendLiveEvent('portfolio_update', data);
-    const payload = getRecord(data);
-    const nextPortfolio = getRecord(payload.portfolio) as unknown as PortfolioStats;
-    if (payload.portfolio) setPortfolio(nextPortfolio);
+    setPortfolio(data.portfolio);
     refreshLiveData().catch(() => {/* non-critical */});
   }, [appendLiveEvent, refreshLiveData]);
 
@@ -552,16 +511,13 @@ export function Dashboard() {
       ]);
 
       if (portfolioRes.status === 'fulfilled') {
-        const p = portfolioRes.value as { portfolio?: PortfolioStats };
-        setPortfolio(p.portfolio ?? null);
+        setPortfolio(portfolioRes.value.portfolio ?? null);
       }
       if (tradesRes.status === 'fulfilled') {
-        const t = tradesRes.value as { trades?: Trade[] };
-        setTrades(t.trades ?? []);
+        setTrades(tradesRes.value.trades ?? []);
       }
       if (signalsRes.status === 'fulfilled') {
-        const s = signalsRes.value as { signals?: Signal[] };
-        setSignals((s.signals ?? []).slice(0, 6));
+        setSignals((signalsRes.value.signals ?? []).slice(0, 6));
       }
       if (subRes.status === 'fulfilled') {
         setSubscription(subRes.value.subscription);
@@ -586,7 +542,7 @@ export function Dashboard() {
         });
       }
       if (exchangeRes.status === 'fulfilled') {
-        setExchangeVenues((exchangeRes.value.supported ?? []) as unknown as ExchangeVenue[]);
+        setExchangeVenues(exchangeRes.value.supported ?? []);
       }
       if (agentStatusRes.status === 'fulfilled') {
         setAgentStatus(agentStatusRes.value.status);
@@ -822,7 +778,7 @@ export function Dashboard() {
     { name: 'bitfinex', label: 'Bitfinex', type: 'exchange' },
     { name: 'interactive_brokers', label: 'Interactive Brokers', type: 'broker' },
     { name: 'oanda', label: 'OANDA', type: 'broker' },
-  ]);
+  ]).filter(venue => venue.name !== 'deriv');
   const visibleStrategyResults = strategyResults.length > 0 ? strategyResults : [
     { strategy: 'xq_trade_m8', totalTrades: 0, winningTrades: 0, losingTrades: 0, openTrades: 0, pnl: 0, avgProfitPercent: 0, activeSignals: 0, avgConfidence: 90.4, winRate: 90.4, latestSignal: null },
     { strategy: 'quantum_ai', totalTrades: 0, winningTrades: 0, losingTrades: 0, openTrades: 0, pnl: 0, avgProfitPercent: 0, activeSignals: 0, avgConfidence: 84.8, winRate: 84.8, latestSignal: null },
@@ -971,6 +927,10 @@ export function Dashboard() {
           <TradingViewChart />
         </Suspense>
       </div>
+
+      <Suspense fallback={<PanelLoader label="Loading Deriv panel…" />}>
+        <DTraderPanel paperTrading={paperTrading} />
+      </Suspense>
 
       <div id="agent-grid" className="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-6 mb-6 scroll-mt-24">
         <div className="relative overflow-hidden rounded-2xl border border-cyan-500/20 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.16),transparent_38%),linear-gradient(135deg,rgba(8,12,22,0.98),rgba(5,5,8,0.96))] p-5">

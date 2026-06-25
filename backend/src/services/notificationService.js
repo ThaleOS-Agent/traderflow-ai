@@ -11,10 +11,9 @@ export class NotificationService {
     this.subscriptions = new Map();
     this.isInitialized = false;
     
-    // VAPID keys for web push (in production, use environment variables)
     this.vapidKeys = {
-      publicKey: 'BEl62iSMgVz8Yf0R3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q3x3l1Z9q',
-      privateKey: 'YourPrivateKeyHere'
+      publicKey: process.env.VAPID_PUBLIC_KEY || '',
+      privateKey: process.env.VAPID_PRIVATE_KEY || ''
     };
     
     // Notification templates
@@ -74,19 +73,17 @@ export class NotificationService {
    * Initialize notification service
    */
   async initialize() {
-    try {
-      // Setup web push with VAPID keys
-      webpush.setVapidDetails(
-        'mailto:admin@tradeflow.ai',
-        this.vapidKeys.publicKey,
-        this.vapidKeys.privateKey
-      );
-      
-      this.isInitialized = true;
-      logger.info('Notification Service initialized');
-    } catch (error) {
-      logger.error('Failed to initialize Notification Service:', error.message);
+    if (!this.vapidKeys.publicKey || !this.vapidKeys.privateKey) {
+      throw new Error('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are required');
     }
+
+    webpush.setVapidDetails(
+      process.env.VAPID_EMAIL || 'mailto:admin@tradeflow.ai',
+      this.vapidKeys.publicKey,
+      this.vapidKeys.privateKey
+    );
+
+    this.isInitialized = true;
   }
 
   /**

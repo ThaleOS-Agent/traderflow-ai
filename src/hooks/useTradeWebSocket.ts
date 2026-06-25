@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import type { PortfolioStats } from '../dashboard/api';
 
 const TOKEN_KEY = 'tradeflow_token';
 
@@ -33,29 +34,124 @@ export interface LiveTrade {
   profit?: number;
   profitLoss?: number;
   strategy: string;
+  exchange?: string;
   createdAt: string;
   openedAt?: string;
+}
+
+export interface LiveOrderEventPayload {
+  userId?: string;
+  order: LiveTrade;
+  isPaperTrade?: boolean;
+  opportunity?: {
+    symbol?: string;
+    exchange?: string;
+    assetType?: string;
+    confidenceScore?: number;
+    strategy?: string;
+  };
+}
+
+export interface LiveTradeEventPayload {
+  userId?: string;
+  trade: LiveTrade;
+  isPaperTrade?: boolean;
+  opportunity?: LiveOrderEventPayload['opportunity'];
 }
 
 export interface LiveMarketData {
   symbol?: string;
   pairs?: string[];
   timestamp?: number;
-  [key: string]: unknown;
+  price?: number;
+  exchange?: string;
+  assetType?: string;
 }
 
-export interface LiveWsEvent {
-  event: string;
-  data?: unknown;
-  timestamp?: number;
+export interface LivePortfolioUpdate {
+  userId?: string;
+  portfolio: PortfolioStats;
+}
+
+export type LiveWsEvent =
+  | { event: 'connected'; data?: { message: string }; timestamp?: number }
+  | { event: 'authenticated'; data?: { userId: string }; timestamp?: number }
+  | { event: 'subscribed' | 'unsubscribed'; data?: { channels: string[] }; timestamp?: number }
+  | { event: 'error'; data?: { message: string }; timestamp?: number }
+  | { event: 'signal' | 'newSignal'; data?: LiveSignal; timestamp?: number }
+  | { event: 'trade' | 'trade_update' | 'tradeExecuted' | 'tradeClosed' | 'autoTradeExecuted'; data?: LiveTrade | LiveTradeEventPayload; timestamp?: number }
+  | { event: 'order' | 'order_update' | 'orderExecuted' | 'orderClosed' | 'mt5_order'; data?: LiveTrade | LiveOrderEventPayload | LiveTradeEventPayload; timestamp?: number }
+  | { event: 'marketData'; data?: LiveMarketData; timestamp?: number }
+  | { event: 'portfolio_update'; data?: LivePortfolioUpdate; timestamp?: number }
+  | { event: string; data?: unknown; timestamp?: number };
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object';
+}
+
+function isLiveTrade(value: unknown): value is LiveTrade {
+  if (!isObject(value)) return false;
+  return (
+    typeof value._id === 'string' &&
+    typeof value.symbol === 'string' &&
+    typeof value.side === 'string' &&
+    typeof value.status === 'string' &&
+    typeof value.entryPrice === 'number' &&
+    typeof value.quantity === 'number' &&
+    typeof value.strategy === 'string'
+  );
+}
+
+function isPortfolioStats(value: unknown): value is PortfolioStats {
+  if (!isObject(value)) return false;
+  return (
+    typeof value.totalBalance === 'number' &&
+    typeof value.availableBalance === 'number' &&
+    typeof value.investedAmount === 'number' &&
+    typeof value.totalProfit === 'number' &&
+    typeof value.totalLoss === 'number' &&
+    typeof value.winRate === 'number' &&
+    typeof value.totalTrades === 'number' &&
+    typeof value.winningTrades === 'number' &&
+    typeof value.losingTrades === 'number'
+  );
+}
+
+function extractTrade(data: unknown): LiveTrade | null {
+  if (isLiveTrade(data)) return data;
+  if (isObject(data) && 'trade' in data && isLiveTrade(data.trade)) {
+    return data.trade;
+  }
+  return null;
+}
+
+function extractOrder(data: unknown): LiveTrade | null {
+  if (isLiveTrade(data)) return data;
+  if (isObject(data) && 'order' in data && isLiveTrade(data.order)) {
+    return data.order;
+  }
+  if (isObject(data) && 'trade' in data && isLiveTrade(data.trade)) {
+    return data.trade;
+  }
+  return null;
+}
+
+function extractPortfolioUpdate(data: unknown): LivePortfolioUpdate | null {
+  if (!isObject(data) || !('portfolio' in data) || !isPortfolioStats(data.portfolio)) {
+    return null;
+  }
+  return {
+    userId: typeof data.userId === 'string' ? data.userId : undefined,
+    portfolio: data.portfolio,
+  };
 }
 
 interface UseTradeWebSocketOptions {
   onSignal?: (signal: LiveSignal) => void;
   onTrade?: (trade: LiveTrade) => void;
-  onOrder?: (order: LiveTrade | Record<string, unknown>) => void;
+  onOrder?: (order: LiveTrade) => void;
   onMarketData?: (data: LiveMarketData) => void;
-  onPortfolioUpdate?: (data: unknown) => void;
+  onPortfolioUpdate?: (data: LivePortfolioUpdate) => void;
   onEvent?: (event: LiveWsEvent) => void;
 }
 
@@ -105,9 +201,9 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
     ws.onmessage = (evt) => {
       if (!mountedRef.current) return;
       try {
-        const msg: WsMessage = JSON.parse(evt.data as string);
+        const msg = JSON.parse(evt.data as string) as LiveWsEvent;
         setLastEvent(msg.event);
-        onEvent?.({ event: msg.event, data: msg.data, timestamp: msg.timestamp });
+        onEvent?.(msg);
 
         switch (msg.event) {
           case 'authenticated':
@@ -121,7 +217,7 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
 
           case 'signal':
           case 'newSignal':
-            onSignal?.(msg.data as LiveSignal);
+            if (msg.data) onSignal?.(msg.data as LiveSignal);
             break;
 
           case 'trade':
@@ -129,8 +225,8 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
           case 'tradeExecuted':
           case 'tradeClosed':
           case 'autoTradeExecuted': {
-            const data = msg.data as LiveTrade | { trade?: LiveTrade };
-            onTrade?.(('trade' in data && data.trade ? data.trade : data) as LiveTrade);
+            const trade = extractTrade(msg.data);
+            if (trade) onTrade?.(trade);
             break;
           }
 
@@ -139,19 +235,20 @@ export function useTradeWebSocket(options: UseTradeWebSocketOptions = {}) {
           case 'orderExecuted':
           case 'orderClosed':
           case 'mt5_order': {
-            const data = msg.data as LiveTrade | { order?: LiveTrade; trade?: LiveTrade };
-            const order = ('order' in data && data.order) || ('trade' in data && data.trade) || data;
-            onOrder?.(order as LiveTrade | Record<string, unknown>);
+            const order = extractOrder(msg.data);
+            if (order) onOrder?.(order);
             break;
           }
 
           case 'marketData':
-            onMarketData?.(msg.data as LiveMarketData);
+            if (msg.data) onMarketData?.(msg.data as LiveMarketData);
             break;
 
-          case 'portfolio_update':
-            onPortfolioUpdate?.(msg.data);
+          case 'portfolio_update': {
+            const update = extractPortfolioUpdate(msg.data);
+            if (update) onPortfolioUpdate?.(update);
             break;
+          }
 
           default:
             break;
